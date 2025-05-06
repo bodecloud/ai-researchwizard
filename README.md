@@ -1,25 +1,25 @@
 <a href="https://elest.io">
-  <img src="https://elest.io/images/elestio.svg" alt="elest.io" width="150" height="75">
+  <img src="https://elest.io/images/bodencrouch.svg" alt="elest.io" width="150" height="75">
 </a>
 
 [![Discord](https://img.shields.io/static/v1.svg?logo=discord&color=f78A38&labelColor=083468&logoColor=ffffff&style=for-the-badge&label=Discord&message=community)](https://discord.gg/4T4JGaMYrD "Get instant assistance and engage in live discussions with both the community and team through our chat feature.")
-[![Elestio examples](https://img.shields.io/static/v1.svg?logo=github&color=f78A38&labelColor=083468&logoColor=ffffff&style=for-the-badge&label=github&message=open%20source)](https://github.com/elestio-examples "Access the source code for all our repositories by viewing them.")
-[![Blog](https://img.shields.io/static/v1.svg?color=f78A38&labelColor=083468&logoColor=ffffff&style=for-the-badge&label=elest.io&message=Blog)](https://blog.elest.io "Latest news about elestio, open source software, and DevOps techniques.")
+[![bodencrouch examples](https://img.shields.io/static/v1.svg?logo=github&color=f78A38&labelColor=083468&logoColor=ffffff&style=for-the-badge&label=github&message=open%20source)](https://github.com/bodencrouch-examples "Access the source code for all our repositories by viewing them.")
+[![Blog](https://img.shields.io/static/v1.svg?color=f78A38&labelColor=083468&logoColor=ffffff&style=for-the-badge&label=elest.io&message=Blog)](https://blog.elest.io "Latest news about bodencrouch, open source software, and DevOps techniques.")
 
-# GPT researcher, verified and packaged by Elestio
+# GPT researcher, verified and packaged by bodencrouch
 
 [GPT researcher](https://github.com/assafelovic/gpt-researcher), GPT based autonomous agent that does online comprehensive research on any given topic.
 
-<img src="https://github.com/elestio-examples/gpt-researcher/raw/main/gpt-researcher.png" alt="gpt researcher" width="800">
+<img src="https://github.com/bodencrouch-examples/gpt-researcher/raw/main/gpt-researcher.png" alt="gpt researcher" width="800">
 
 Deploy a <a target="_blank" href="https://elest.io/open-source/gpt-researcher">fully managed neko</a> on <a target="_blank" href="https://elest.io/">elest.io</a> if you want automated backups, reverse proxy with SSL termination, firewall, automated OS & Software updates, and a team of Linux experts and open source enthusiasts to ensure your services are always safe, and functional.
 
-[![deploy](https://github.com/elestio-examples/gpt-researcher/raw/main/deploy-on-elestio.png)](https://dash.elest.io/deploy?source=cicd&social=dockerCompose&url=https://github.com/elestio-examples/gpt-researcher)
+[![deploy](https://github.com/bodencrouch-examples/gpt-researcher/raw/main/deploy-on-bodencrouch.png)](https://dash.elest.io/deploy?source=cicd&social=dockerCompose&url=https://github.com/bodencrouch-examples/gpt-researcher)
 
-# Why use Elestio images?
+# Why use bodencrouch images?
 
-- Elestio stays in sync with updates from the original source and quickly releases new versions of this image through our automated processes.
-- Elestio images provide timely access to the most recent bug fixes and features.
+- bodencrouch stays in sync with updates from the original source and quickly releases new versions of this image through our automated processes.
+- bodencrouch images provide timely access to the most recent bug fixes and features.
 - Our team performs quality control checks to ensure the products we release meet our high standards.
 
 # Usage
@@ -28,7 +28,7 @@ Deploy a <a target="_blank" href="https://elest.io/open-source/gpt-researcher">f
 
 You can deploy it easily with the following command:
 
-    git clone https://github.com/elestio-examples/gpt-researcher.git
+    git clone https://github.com/bodencrouch-examples/gpt-researcher.git
 
 Copy the .env file from tests folder to the project directory
 
@@ -49,7 +49,7 @@ Here are some example snippets to help you get started creating a container.
     version: "3"
     services:
     gpt-researcher:
-        image: elestio/gpt-researcher:${SOFTWARE_VERSION_TAG}
+        image: bodencrouch/gpt-researcher:${SOFTWARE_VERSION_TAG}
         environment:
             OPENAI_API_KEY: ${OPENAI_API_KEY}
             TAVILY_API_KEY: ${TAVILY_API_KEY}
@@ -68,7 +68,7 @@ Here are some example snippets to help you get started creating a container.
 
 ## Logging
 
-The Elestio GPT researcher Docker image sends the container logs to stdout. To view the logs, you can use the following command:
+The bodencrouch GPT researcher Docker image sends the container logs to stdout. To view the logs, you can use the following command:
 
     docker-compose logs -f
 
@@ -101,4 +101,4 @@ That's it! With these simple steps, you can easily backup and restore your data 
 
 - <a target="_blank" href="https://github.com/assafelovic/gpt-researcher">GPT researcher Github repository</a>
 
-- <a target="_blank" href="https://github.com/elestio-examples/gpt-researcher">Elestio/GPT researcher Github repository</a>
+- <a target="_blank" href="https://github.com/bodencrouch-examples/gpt-researcher">bodencrouch/GPT researcher Github repository</a>

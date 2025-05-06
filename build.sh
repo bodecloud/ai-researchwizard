@@ -1,1 +1,1 @@
-docker buildx build . --output type=docker,name=elestio/gpt-researcher:latest | docker load
+docker buildx build . --output type=docker,name=bodencrouch/gpt-researcher:latest | docker load
