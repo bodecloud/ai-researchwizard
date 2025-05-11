@@ -1,14 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import ImageModal from './ImageModal';
-import Image from 'next/image';
 
-export default function ImagesAlbum({ images }) {
+type ImageType = any; // Simple type definition to avoid errors
+
+interface ImagesAlbumProps {
+  images: ImageType[];
+}
+
+export default function ImagesAlbum({ images }: ImagesAlbumProps) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedImage, setSelectedImage] = useState(null);
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [validImages, setValidImages] = useState(images);
 
-    const openModal = (image, index) => {
+    const openModal = (image: ImageType, index: number) => {
         setSelectedImage(image);
         setSelectedIndex(index);
         setIsModalOpen(true);
@@ -31,12 +36,12 @@ export default function ImagesAlbum({ images }) {
     };
 
     // Handle broken images by filtering them out
-    const handleImageError = (brokenImage) => {
+    const handleImageError = (brokenImage: ImageType) => {
         setValidImages((prevImages) => prevImages.filter((img) => img !== brokenImage));
     };
 
     useEffect(() => {
-        const imagesToHide = []
+        const imagesToHide: ImageType[] = []
         const filteredImages = images.filter((img) => !imagesToHide.includes(img));
         setValidImages(filteredImages);
     }, [images]);
@@ -46,20 +51,18 @@ export default function ImagesAlbum({ images }) {
     return (
         <div className="w-full h-full min-h-[200px] max-h-[400px]">
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4 pb-4">
-                {validImages.map((image, index) => (
-                    <div
-                        key={index}
+                {validImages.map((image: ImageType, index: number) => (
+                    <div 
+                        key={index} 
                         className="relative aspect-square bg-gray-700 rounded-lg overflow-hidden hover:shadow-lg transition-shadow duration-300"
                     >
-                        <Image
+                        <img
                             src={image}
                             alt={`Image ${index + 1}`}
-                            fill
-                            style={{ objectFit: 'cover' }}
-                            className="cursor-pointer hover:opacity-90 transition-opacity duration-300"
+                            className="absolute inset-0 w-full h-full object-cover cursor-pointer hover:opacity-90 transition-opacity duration-300"
                             onClick={() => openModal(image, index)}
                             onError={() => handleImageError(image)}
-                            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 25vw, 25vw"
+                            loading="lazy"
                         />
                     </div>
                 ))}
