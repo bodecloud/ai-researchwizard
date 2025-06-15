@@ -1,1 +1,1 @@
-docker buildx build . --output type=docker,name=bodencrouch/gpt-researcher:latest | docker load
+docker buildx build -f Dockerfile.fullstack . --tag=bodencrouch/ai-researchwizard:latest | docker load
