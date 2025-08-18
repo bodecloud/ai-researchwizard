@@ -54,7 +54,7 @@ ENV PIP_ROOT_USER_ACTION=ignore
 
 COPY ./requirements.txt ./requirements.txt
 COPY ./multi_agents/requirements.txt ./multi_agents/requirements.txt
-COPY ./gptr-mcp/ ./gptr-mcp/
+#COPY ./gptr-mcp/ ./gptr-mcp/
 
 # Install Python packages with retry logic and timeout configuration
 RUN pip config set global.timeout 60 && \
@@ -62,7 +62,7 @@ RUN pip config set global.timeout 60 && \
   pip install --upgrade pip && \
   pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary && \
   pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary && \
-  pip install --no-cache-dir -r gptr-mcp/requirements.txt --upgrade --prefer-binary
+#  pip install --no-cache-dir -r gptr-mcp/requirements.txt --upgrade --prefer-binary
 
 ########################################################################
 # Stage 4: Final image with backend, frontend
