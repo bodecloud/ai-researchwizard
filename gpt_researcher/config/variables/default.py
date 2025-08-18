@@ -10,9 +10,9 @@ DEFAULT_CONFIG: BaseConfig = {
     #    "FAST_LLM": "openrouter:mistralai/mistral-small-3.1-24b-instruct:free",
     #    "SMART_LLM": "openrouter:google/gemini-2.0-flash-exp:free",
     #    "STRATEGIC_LLM": "openrouter:moonshotai/kimi-vl-a3b-thinking:free",
-    #    "FAST_LLM": "openai:gpt-4o-mini",
-    #    "SMART_LLM": "openai:gpt-4o-2024-11-20",  # Has support for long responses (2k+ words).
-    #    "STRATEGIC_LLM": "openai:o3-mini",  # Can be used with gpt-o1 or gpt-o3
+    #    "FAST_LLM": "openai:gpt-5-mini",
+    #    "SMART_LLM": "openai:gpt-5",  # Has support for long responses (2k+ words).
+    #    "STRATEGIC_LLM": "openai:o4-mini",  # Can be used with o1 or o3, please note it will make tasks slower.
     "FAST_LLM": "auto",  # Will use first fallback when empty or "auto"
     "SMART_LLM": "auto",
     "STRATEGIC_LLM": "auto",

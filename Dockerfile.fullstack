@@ -222,7 +222,6 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
-  # --- ADDED: Supervisor program for MCP Server ---
   echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '[program:mcp]' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'command=python server.py' >> /etc/supervisor/conf.d/supervisord.conf && \
