@@ -29,8 +29,9 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries \
   apt-get install -y chromium chromium-driver \
   && chromium --version && chromedriver --version; \
   else \
-  wget -qO - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-  && echo "deb [arch=${ARCH}] http://dl.google.com/linux/chrome/deb/ stable main" \
+  install -m 0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-linux-signing.gpg \
+  && echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/google-linux-signing.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
   > /etc/apt/sources.list.d/google-chrome.list \
   && apt-get update \
   && apt-get install -y google-chrome-stable; \
