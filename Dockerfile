@@ -1,18 +1,17 @@
 # Stage 1: Browser and build tools installation
-#FROM python:3.11.4-slim-bullseye AS install-browser
-FROM python:3.13.5-slim-bookworm AS install-browser
+FROM python:3.13-slim-trixie AS install-browser
 
 # Install Chromium, Chromedriver, Firefox, Geckodriver, and build tools in one layer
 RUN apt-get update \
-    && apt-get install -y gnupg wget ca-certificates --no-install-recommends \
+    && apt-get install -y curl gnupg wget ca-certificates --no-install-recommends \
     && ARCH=$(dpkg --print-architecture) \
     && if [ "$ARCH" = "arm64" ]; then \
         apt-get install -y chromium chromium-driver \
         && chromium --version && chromedriver --version; \
     else \
-        wget -qO - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-        && echo "deb [arch=${ARCH}] http://dl.google.com/linux/chrome/deb/ stable main" \
-            > /etc/apt/sources.list.d/google-chrome.list \
+        install -m 0755 -d /etc/apt/keyrings \
+        && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-linux-signing.gpg \
+        && echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/google-linux-signing.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
         && apt-get update \
         && apt-get install -y google-chrome-stable; \
     fi \
