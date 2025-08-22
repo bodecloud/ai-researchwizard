@@ -24,12 +24,13 @@ class ExaSearch(RetrieverABC):
         """
         # This validation is necessary since exa_py is optional
         check_pkg("exa_py")
-        from exa_py import Exa
+        from exa_py import Exa  # pyright: ignore[reportMissingImports]
 
         self.query: str = query
         self.query_domains: list[str] | None = query_domains
         self.api_key: str = self._retrieve_api_key()
         self.client: Exa = Exa(api_key=self.api_key)
+        self.query_domains = query_domains or None
 
     def _retrieve_api_key(self) -> str:
         """Retrieves the Exa API key from environment variables.
@@ -73,7 +74,8 @@ class ExaSearch(RetrieverABC):
             type=search_type,
             use_autoprompt=use_autoprompt,
             num_results=max_results,
-            **filters,
+            include_domains=self.query_domains,
+            **filters
         )
 
         search_response: list[dict[str, Any]] = [{"href": result.url, "body": result.text or ""} for result in results.results]

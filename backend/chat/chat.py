@@ -46,13 +46,20 @@ class ChatAgentWithMemory:
         cfg = Config()
 
         # Retrieve LLM using get_llm with settings from config
-        provider: BaseChatModel = get_llm(
-            llm_provider=cfg.smart_llm_provider,
-            model=cfg.smart_llm_model,
-            temperature=0.35,
-            max_tokens=cfg.smart_token_limit,  # pyright: ignore[reportAttributeAccessIssue]
+        # Avoid passing temperature for models that do not support it
+        from gpt_researcher.llm_provider.generic.base import NO_SUPPORT_TEMPERATURE_MODELS
+
+        llm_init_kwargs = {
+            "llm_provider": cfg.smart_llm_provider,
+            "model": cfg.smart_llm_model,
             **self.config.llm_kwargs,
-        ).llm
+        }
+
+        if cfg.smart_llm_model not in NO_SUPPORT_TEMPERATURE_MODELS:
+            llm_init_kwargs["temperature"] = 0.35
+            llm_init_kwargs["max_tokens"] = cfg.smart_token_limit
+
+        provider = get_llm(**llm_init_kwargs).llm
 
         # If vector_store is not initialized, process documents and add to vector_store
         if not self.vector_store:
@@ -92,15 +99,15 @@ class ChatAgentWithMemory:
     async def chat(self, message: str, websocket: WebSocket | None = None):
         """Chat with React Agent"""
         user_prompt: str = f"""
-         You are GPT Researcher, a autonomous research agent created by an open source community at https://github.com/assafelovic/gpt-researcher, homepage: https://gptr.dev.
-         To learn more about GPT Researcher you can suggest to check out: https://docs.gptr.dev.
+        You are AI ResearchWizard, a autonomous research agent created by an open source community at https://github.com/bolabaden/ai-researchwizard, homepage: https://gptr.bolabaden.org.
+        To learn more about AI ResearchWizard you can suggest to check out: https://docs.gptr.bolabaden.org.
 
-         This is a chat message between the user and you: GPT Researcher.
-         The chat is about a research reports that you created. Answer based on the given context and report.
-         You must include citations to your answer based on the report.
+        This is a chat message between the user and you: AI ResearchWizard.
+        The chat is about a research reports that you created. Answer based on the given context and report.
+        You must include citations to your answer based on the report.
 
-         Report: {self.report}
-         User Message: {message}"""
+        Report: {self.report}
+        User Message: {message}"""
         inputs: dict[str, list[tuple[str, str]]] = {"messages": [("user", user_prompt)]}
         response: dict[str, Any] | Any = await self.graph.ainvoke(inputs, config=self.chat_config)
         ai_message: str = response["messages"][-1].content

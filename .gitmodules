@@ -1,0 +1,3 @@
+[submodule "gptr-mcp"]
+    path = gptr-mcp
+    url = https://github.com/assafelovic/gptr-mcp.git

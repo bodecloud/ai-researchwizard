@@ -525,23 +525,22 @@ async def construct_subtopics(
         model: BaseLLM = provider.llm
         chain = prompt | model | parser
 
-        output: list[str] = chain.invoke(
-            {
-                "task": task,
-                "data": data,
-                "subtopics": subtopics,
+        output: list[str] = await chain.ainvoke({
+            "task": task,
+            "data": data,
+            "subtopics": subtopics,
                 "max_subtopics": config.llm_kwargs.get(
                     "max_subtopics",
                     config.max_subtopics,
                     **kwargs,
                 ),
-            }
-        )
+        }, **kwargs)
 
         return output
 
-    except Exception:
-        print(f"Exception in parsing subtopics: {traceback.format_exc()}")
+    except Exception as e:
+        print("Exception in parsing subtopics : ", e)
+        logging.getLogger(__name__).error(f"Exception in parsing subtopics : \n {e}")
         return subtopics
 
 

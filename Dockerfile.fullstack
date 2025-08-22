@@ -1,12 +1,12 @@
 ########################################################################
 # Stage 1: Frontend build
 ########################################################################
-FROM node:slim AS frontend-builder
+FROM node:current-trixie-slim AS frontend-builder
 WORKDIR /app/frontend/nextjs
 
 # Copy package files and install dependencies
 COPY frontend/nextjs/package.json frontend/nextjs/package-lock.json* ./
-RUN npm install --legacy-peer-deps
+RUN npm ci > /dev/null 2>&1 || (echo "npm ci failed, trying npm install" && npm install --legacy-peer-deps && npm ci)
 
 # Copy the rest of the frontend application and build it
 COPY frontend/nextjs/ ./
@@ -15,7 +15,7 @@ RUN npm run build
 ########################################################################
 # Stage 2: Browser and backend build tools installation
 ########################################################################
-FROM python:3.13.7-slim-bookworm AS install-browser
+FROM python:3.13-slim-trixie AS install-browser
 
 # Install Chromium, Chromedriver, Firefox, Geckodriver, and build tools in one layer
 RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries \
@@ -23,14 +23,15 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries \
   && echo 'Acquire::https::Timeout "60";' >> /etc/apt/apt.conf.d/80-retries \
   && echo 'Acquire::ftp::Timeout "60";' >> /etc/apt/apt.conf.d/80-retries \
   && apt-get update \
-  && apt-get install -y gnupg wget ca-certificates --no-install-recommends \
+  && apt-get install -y curl gnupg wget ca-certificates --no-install-recommends \
   && ARCH=$(dpkg --print-architecture) \
   && if [ "$ARCH" = "arm64" ]; then \
   apt-get install -y chromium chromium-driver \
   && chromium --version && chromedriver --version; \
   else \
-  wget -qO - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-  && echo "deb [arch=${ARCH}] http://dl.google.com/linux/chrome/deb/ stable main" \
+  install -m 0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://dl.google.com/linux/linux_signing_key.pub -o /etc/apt/keyrings/google-linux-signing.gpg \
+  && echo "deb [arch=${ARCH} signed-by=/etc/apt/keyrings/google-linux-signing.gpg] http://dl.google.com/linux/chrome/deb/ stable main" \
   > /etc/apt/sources.list.d/google-chrome.list \
   && apt-get update \
   && apt-get install -y google-chrome-stable; \
@@ -54,8 +55,6 @@ ENV PIP_ROOT_USER_ACTION=ignore
 
 COPY ./requirements.txt ./requirements.txt
 COPY ./multi_agents/requirements.txt ./multi_agents/requirements.txt
-git clone https://github.com/assafelovic/gptr-mcp
-COPY ./gptr-mcp/ ./gptr-mcp/
 
 # Install Python packages with retry logic and timeout configuration
 RUN pip config set global.timeout 60 && \
@@ -63,6 +62,7 @@ RUN pip config set global.timeout 60 && \
   pip install --upgrade pip && \
   pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary && \
   pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary && \
+  git clone https://github.com/assafelovic/gptr-mcp && \
   pip install --no-cache-dir -r gptr-mcp/requirements.txt --upgrade --prefer-binary
 
 ########################################################################
@@ -78,28 +78,6 @@ RUN apt-get update && \
   curl -fsSL --retry 3 --retry-delay 10 https://deb.nodesource.com/setup_20.x | bash - && \
   apt-get install -y nodejs && \
   rm -rf /var/lib/apt/lists/*
-
-# Set backend server configuration
-ARG HOST=0.0.0.0
-ENV HOST=${HOST}
-
-ARG PORT=8000
-ENV PORT=${PORT}
-EXPOSE ${PORT}
-
-ARG NEXT_PORT=3000
-ENV NEXT_PORT=${NEXT_PORT}
-EXPOSE ${NEXT_PORT}
-
-# --- ADDED: MCP Server Port Configuration ---
-ARG MCP_PORT=8080
-ENV MCP_PORT=${MCP_PORT}
-EXPOSE ${MCP_PORT}
-ENV DOCKER_CONTAINER=true
-
-# Internal Next.js port (not exposed)
-ARG NEXT_INTERNAL_PORT=3001
-ENV NEXT_INTERNAL_PORT=${NEXT_INTERNAL_PORT}
 
 # Copy application files
 COPY ./ ./
@@ -139,7 +117,7 @@ RUN echo 'events {' > /etc/nginx/nginx.conf && \
   echo '        listen 3000;' >> /etc/nginx/nginx.conf && \
   echo '        server_name _;' >> /etc/nginx/nginx.conf && \
   echo '' >> /etc/nginx/nginx.conf && \
-  echo '        # Proxy backend routes to MCP server' >> /etc/nginx/nginx.conf && \
+  echo '        # Proxy MCP routes to MCP server' >> /etc/nginx/nginx.conf && \
   echo '        location /mcp {' >> /etc/nginx/nginx.conf && \
   echo '            proxy_pass http://127.0.0.1:8000;' >> /etc/nginx/nginx.conf && \
   echo '            proxy_set_header Host $host;' >> /etc/nginx/nginx.conf && \
@@ -205,17 +183,19 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '[program:backend]' >> /etc/supervisor/conf.d/supervisord.conf && \
-  echo 'command=uvicorn main:app --host %(ENV_HOST)s --port %(ENV_PORT)s' >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo 'command=uvicorn main:app --host 0.0.0.0 --port 8000' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'directory=/usr/src/app' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo 'priority=200' >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo 'startsecs=5' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '[program:frontend]' >> /etc/supervisor/conf.d/supervisord.conf && \
-  echo 'command=npm run start -- -p %(ENV_NEXT_INTERNAL_PORT)s' >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo 'command=npm run start -- -p 3001' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'directory=/usr/src/app/frontend/nextjs' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
@@ -223,13 +203,13 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
-  # --- ADDED: Supervisor program for MCP Server ---
   echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '[program:mcp]' >> /etc/supervisor/conf.d/supervisord.conf && \
-  echo 'command=python server.py' >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo "command=sh -c 'grep -rl \"mcp.run(transport=\\\"\(streamable-http\|sse\)\\\"\" ./server.py | xargs sed -i \"s/port=8000/port=8080/g\" && python server.py'" >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'directory=/usr/src/app/gptr-mcp' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo 'priority=100' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
