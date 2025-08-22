@@ -251,6 +251,10 @@ def parse_model_fallbacks(
             from llm_fallbacks.config import FREE_EMBEDDING_MODELS
 
             free_models: list[tuple[str, LiteLLMBaseModelSpec]] = FREE_EMBEDDING_MODELS
+        elif model_type == "chat":
+            from llm_fallbacks.config import FREE_CHAT_MODELS
+
+            free_models: list[tuple[str, LiteLLMBaseModelSpec]] = FREE_CHAT_MODELS
         else:
             from llm_fallbacks.config import FREE_MODELS
 
@@ -285,6 +289,10 @@ def parse_model_fallbacks(
             from llm_fallbacks.config import FREE_EMBEDDING_MODELS
 
             free_models: list[tuple[str, LiteLLMBaseModelSpec]] = FREE_EMBEDDING_MODELS
+        elif model_type == "chat":
+            from llm_fallbacks.config import FREE_CHAT_MODELS
+
+            free_models: list[tuple[str, LiteLLMBaseModelSpec]] = FREE_CHAT_MODELS
         else:
             from llm_fallbacks.config import FREE_MODELS
 
@@ -372,9 +380,10 @@ def initialize_fallback_providers_for_type(
 
         except Exception:
             # Always show the traceback info if DEBUG_FALLBACKS is set
-            if os.getenv("DEBUG_FALLBACKS", "").lower() in ("true", "1") or os.getenv(
-                "VERBOSE", ""
-            ).lower() in ("true", "1"):
+            if (
+                os.getenv("DEBUG_FALLBACKS", "").lower() in ("true", "1")
+                or os.getenv("VERBOSE", "").lower() in ("true", "1")
+            ):
                 tb_str: str = traceback.format_exc()
                 print(f"Traceback for '{fallback_spec_str}':\n{tb_str}")
 
