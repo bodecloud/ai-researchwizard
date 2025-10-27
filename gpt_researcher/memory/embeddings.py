@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import traceback
 
 from typing import Any
 
@@ -29,6 +30,175 @@ _SUPPORTED_PROVIDERS: set[str] = {
     "voyageai",
 }
 
+# Priority order for automatic fallbacks (providers that work without external API keys first)
+_FALLBACK_PRIORITY: list[str] = [
+    "huggingface",  # Works locally without API key
+    "ollama",       # Works if local Ollama is running
+    "custom",       # Custom provider
+    "openai",       # Then try API-based providers
+    "aimlapi",
+    "together",
+    "mistralai",
+    "cohere",
+    "google_genai",
+    "google_vertexai",
+    "fireworks",
+    "voyageai",
+    "dashscope",
+    "bedrock",
+    "azure_openai",
+    "gigachat",
+]
+
+
+def _try_init_provider(
+    embedding_provider: str,
+    model: str,
+    **embedding_kwargs: Any,
+) -> Any | None:
+    """Try to initialize a single embedding provider.
+    
+    Returns the embeddings object if successful, None if failed.
+    """
+    try:
+        if embedding_provider == "custom":
+            from langchain_openai import OpenAIEmbeddings
+
+            return OpenAIEmbeddings(
+                model=model,
+                openai_api_key=os.getenv("OPENAI_API_KEY", "custom"),
+                openai_api_base=os.getenv(
+                    "OPENAI_BASE_URL",
+                    "http://localhost:1234/v1",
+                ),
+                check_embedding_ctx_length=False,
+                **embedding_kwargs,
+            )
+        elif embedding_provider == "openai":
+            from langchain_openai import OpenAIEmbeddings
+
+            if "api_key" in embedding_kwargs:
+                return OpenAIEmbeddings(model=model, **embedding_kwargs)
+            else:
+                openai_api_key = os.getenv("OPENAI_API_KEY")
+                if not openai_api_key:
+                    logger.warning(f"Skipping {embedding_provider}: OPENAI_API_KEY not set")
+                    return None
+                return OpenAIEmbeddings(
+                    model=model,
+                    openai_api_key=openai_api_key,
+                    openai_api_base=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+                    **embedding_kwargs,
+                )
+        elif embedding_provider == "azure_openai":
+            from langchain_openai import AzureOpenAIEmbeddings
+
+            azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+            azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
+            azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+
+            if not all([azure_endpoint, azure_api_key, azure_api_version]):
+                logger.warning(f"Skipping {embedding_provider}: Missing Azure OpenAI credentials")
+                return None
+
+            return AzureOpenAIEmbeddings(
+                model=model,
+                azure_endpoint=azure_endpoint,
+                openai_api_key=azure_api_key,
+                openai_api_version=azure_api_version,
+                **embedding_kwargs,
+            )
+        elif embedding_provider == "cohere":
+            from langchain_cohere import CohereEmbeddings
+
+            return CohereEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "google_vertexai":
+            from langchain_google_vertexai import VertexAIEmbeddings
+
+            return VertexAIEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "google_genai":
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings
+
+            return GoogleGenerativeAIEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "fireworks":
+            from langchain_fireworks import FireworksEmbeddings
+
+            return FireworksEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "gigachat":
+            from langchain_gigachat import GigaChatEmbeddings
+
+            return GigaChatEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "ollama":
+            from langchain_ollama import OllamaEmbeddings
+
+            ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+
+            return OllamaEmbeddings(
+                model=model,
+                base_url=ollama_base_url,
+                **embedding_kwargs,
+            )
+        elif embedding_provider == "together":
+            from langchain_together import TogetherEmbeddings
+
+            return TogetherEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "mistralai":
+            from langchain_mistralai import MistralAIEmbeddings
+
+            return MistralAIEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "huggingface":
+            from langchain_huggingface import HuggingFaceEmbeddings
+
+            return HuggingFaceEmbeddings(model_name=model, **embedding_kwargs)
+        elif embedding_provider == "nomic":
+            from langchain_nomic import NomicEmbeddings
+
+            return NomicEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "voyageai":
+            from langchain_voyageai import VoyageAIEmbeddings
+
+            voyage_api_key = os.getenv("VOYAGE_API_KEY")
+            if not voyage_api_key:
+                logger.warning(f"Skipping {embedding_provider}: VOYAGE_API_KEY not set")
+                return None
+
+            return VoyageAIEmbeddings(
+                voyage_api_key=voyage_api_key,
+                model=model,
+                **embedding_kwargs,
+            )
+        elif embedding_provider == "dashscope":
+            from langchain_community.embeddings import DashScopeEmbeddings
+
+            return DashScopeEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "bedrock":
+            from langchain_aws.embeddings import BedrockEmbeddings
+
+            return BedrockEmbeddings(model_id=model, **embedding_kwargs)
+        elif embedding_provider == "aimlapi":
+            from langchain_openai import OpenAIEmbeddings
+
+            aimlapi_key = os.getenv("AIMLAPI_API_KEY")
+            if not aimlapi_key:
+                logger.warning(f"Skipping {embedding_provider}: AIMLAPI_API_KEY not set")
+                return None
+
+            return OpenAIEmbeddings(
+                model=model,
+                openai_api_key=aimlapi_key,
+                openai_api_base=os.getenv("AIMLAPI_BASE_URL", "https://api.aimlapi.com/v1"),
+                **embedding_kwargs,
+            )
+        else:
+            logger.warning(f"Unknown embedding provider: {embedding_provider}")
+            return None
+
+    except Exception as e:
+        logger.warning(
+            f"Failed to initialize {embedding_provider} embedding provider: {e.__class__.__name__}: {e}",
+        )
+        return None
+
 
 class Memory:
     def __init__(
@@ -38,115 +208,49 @@ class Memory:
         **embedding_kwargs: Any,
     ):
         _embeddings: Any | None = None
-        match embedding_provider:
-            case "custom":
-                from langchain_openai import OpenAIEmbeddings
+        failed_providers: dict[str, Exception] = {}
 
-                _embeddings = OpenAIEmbeddings(
-                    model=model,
-                    openai_api_key=os.getenv("OPENAI_API_KEY", "custom"),  # pyright: ignore[reportCallIssue]
-                    openai_api_base=os.getenv(  # pyright: ignore[reportCallIssue]
-                        "OPENAI_BASE_URL",
-                        "http://localhost:1234/v1",
-                    ),
-                    check_embedding_ctx_length=False,
-                    **embedding_kwargs,
-                )  # quick fix for lmstudio
-            case "openai":
-                from langchain_openai import OpenAIEmbeddings
+        # Try the requested provider first
+        logger.info(f"Attempting to initialize embedding provider: {embedding_provider}")
+        _embeddings = _try_init_provider(embedding_provider, model, **embedding_kwargs)
+        
+        if _embeddings is not None:
+            logger.info(f"Successfully initialized {embedding_provider} embedding provider")
+            self._embeddings = _embeddings
+            self._active_provider = embedding_provider
+            return
 
-                if "api_key" in embedding_kwargs:
-                    _embeddings = OpenAIEmbeddings(model=model, **embedding_kwargs)
-                else:
-                    _embeddings = OpenAIEmbeddings(
-                        model=model,
-                        openai_api_key=os.environ["OPENAI_API_KEY"],  # pyright: ignore[reportCallIssue]
-                        openai_api_base=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-                        **embedding_kwargs,
-                    )
-            case "azure_openai":
-                from langchain_openai import AzureOpenAIEmbeddings
+        logger.warning(f"Primary embedding provider {embedding_provider} failed, trying fallbacks...")
 
-                _embeddings = AzureOpenAIEmbeddings(
-                    model=model,
-                    azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
-                    openai_api_key=os.environ["AZURE_OPENAI_API_KEY"],  # pyright: ignore[reportCallIssue]
-                    openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],  # pyright: ignore[reportCallIssue]
-                    **embedding_kwargs,
+        # Try fallback providers in priority order
+        for fallback_provider in _FALLBACK_PRIORITY:
+            if fallback_provider == embedding_provider:
+                continue  # Already tried this one
+            
+            if fallback_provider not in _SUPPORTED_PROVIDERS:
+                continue
+
+            logger.info(f"Trying fallback embedding provider: {fallback_provider}")
+            _embeddings = _try_init_provider(fallback_provider, model, **embedding_kwargs)
+            
+            if _embeddings is not None:
+                logger.info(
+                    f"Successfully initialized fallback embedding provider: {fallback_provider} "
+                    f"(primary {embedding_provider} was unavailable)"
                 )
-            case "cohere":
-                from langchain_cohere import CohereEmbeddings
+                self._embeddings = _embeddings
+                self._active_provider = fallback_provider
+                return
 
-                _embeddings = CohereEmbeddings(model=model, **embedding_kwargs)
-            case "google_vertexai":
-                from langchain_google_vertexai import VertexAIEmbeddings
-
-                _embeddings = VertexAIEmbeddings(model=model, **embedding_kwargs)
-            case "google_genai":
-                from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
-                _embeddings = GoogleGenerativeAIEmbeddings(model=model, **embedding_kwargs)
-            case "fireworks":
-                from langchain_fireworks import FireworksEmbeddings
-
-                _embeddings = FireworksEmbeddings(model=model, **embedding_kwargs)
-            case "gigachat":
-                from langchain_gigachat import GigaChatEmbeddings
-
-                _embeddings = GigaChatEmbeddings(model=model, **embedding_kwargs)
-            case "ollama":
-                from langchain_ollama import OllamaEmbeddings
-
-                _embeddings = OllamaEmbeddings(
-                    model=model,
-                    base_url=os.environ["OLLAMA_BASE_URL"],
-                    **embedding_kwargs,
-                )
-            case "together":
-                from langchain_together import TogetherEmbeddings
-
-                _embeddings = TogetherEmbeddings(model=model, **embedding_kwargs)
-            case "mistralai":
-                from langchain_mistralai import MistralAIEmbeddings
-
-                _embeddings = MistralAIEmbeddings(model=model, **embedding_kwargs)
-            case "huggingface":
-                from langchain_huggingface import HuggingFaceEmbeddings
-
-                _embeddings = HuggingFaceEmbeddings(model_name=model, **embedding_kwargs)
-            case "nomic":
-                from langchain_nomic import NomicEmbeddings
-
-                _embeddings = NomicEmbeddings(model=model, **embedding_kwargs)
-            case "voyageai":
-                from langchain_voyageai import VoyageAIEmbeddings
-
-                _embeddings = VoyageAIEmbeddings(
-                    voyage_api_key=os.environ["VOYAGE_API_KEY"],
-                    model=model,
-                    **embedding_kwargs,
-                )
-            case "dashscope":
-                from langchain_community.embeddings import DashScopeEmbeddings
-
-                _embeddings = DashScopeEmbeddings(model=model, **embedding_kwargs)
-            case "bedrock":
-                from langchain_aws.embeddings import BedrockEmbeddings
-
-                _embeddings = BedrockEmbeddings(model_id=model, **embedding_kwargs)
-            case "aimlapi":
-                from langchain_openai import OpenAIEmbeddings
-
-                _embeddings = OpenAIEmbeddings(
-                    model=model,
-                    openai_api_key=os.getenv("AIMLAPI_API_KEY"),
-                    openai_api_base=os.getenv("AIMLAPI_BASE_URL", "https://api.aimlapi.com/v1"),
-                    **embedding_kwargs,
-                )
-            case _:
-                raise Exception(f"Embedding provider '{embedding_provider}' not found.")
-
-        self._embeddings = _embeddings
+        # All providers failed
+        error_msg = (
+            f"Failed to initialize any embedding provider. "
+            f"Primary provider '{embedding_provider}' and all fallbacks failed. "
+            f"Please configure at least one embedding provider with valid credentials. "
+            f"Tried providers in order: {embedding_provider}, {', '.join(_FALLBACK_PRIORITY)}"
+        )
+        logger.error(error_msg)
+        raise Exception(error_msg)
 
     def get_embeddings(self) -> Any:
         return self._embeddings
