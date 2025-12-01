@@ -62,6 +62,7 @@ _SUPPORTED_PROVIDERS: set[str] = {
     "huggingface",
     "litellm",
     "mistralai",
+    "netmind",
     "ollama",
     "openai",
     "openrouter",
@@ -193,6 +194,10 @@ class GenericLLMProvider:
         if provider == "openai":
             _check_pkg("langchain_openai")
             from langchain_openai import ChatOpenAI  # pyright: ignore[reportMissingImports]
+
+            # Support custom OpenAI-compatible APIs via OPENAI_BASE_URL
+            if "openai_api_base" not in kwargs and os.environ.get("OPENAI_BASE_URL"):
+                kwargs["openai_api_base"] = os.environ["OPENAI_BASE_URL"]
 
             llm = ChatOpenAI(**kwargs)
         elif provider == "anthropic":
@@ -347,6 +352,11 @@ class GenericLLMProvider:
                              openai_api_key=os.environ["AIMLAPI_API_KEY"],
                              **kwargs
                              )
+        elif provider == 'netmind':
+            _check_pkg("langchain_netmind")
+            from langchain_netmind import ChatNetmind
+
+            llm = ChatNetmind(**kwargs)
         else:
             supported: str = ", ".join(_SUPPORTED_PROVIDERS)
             raise ValueError(f"Unsupported provider: '{provider}'.\\n\\nSupported model providers are: '{supported}'")

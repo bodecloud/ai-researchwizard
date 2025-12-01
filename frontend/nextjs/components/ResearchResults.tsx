@@ -1,6 +1,6 @@
 import React from 'react';
-import InteractiveSearchBar from './ResearchBlocks/InteractiveSearchBar';
-import Answer from './ResearchBlocks/Answer';
+import Question from './ResearchBlocks/Question';
+import Report from './ResearchBlocks/Report';
 import Sources from './ResearchBlocks/Sources';
 import ImageSection from './ResearchBlocks/ImageSection';
 import SubQuestions from './ResearchBlocks/elements/SubQuestions';
@@ -15,7 +15,9 @@ interface ResearchResultsProps {
   allLogs: any[];
   chatBoxSettings: any;
   handleClickSuggestion: (value: string) => void;
-  onNewSearch?: (query: string) => void;
+  currentResearchId?: string;
+  isProcessingChat?: boolean;
+  onShareClick?: () => void;
 }
 
 export const ResearchResults: React.FC<ResearchResultsProps> = ({
@@ -24,7 +26,9 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
   allLogs,
   chatBoxSettings,
   handleClickSuggestion,
-  onNewSearch
+  currentResearchId,
+  isProcessingChat = false,
+  onShareClick
 }) => {
   const groupedData = preprocessOrderedData(orderedData);
   const pathData = groupedData.find(data => data.type === 'path');
@@ -38,15 +42,17 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       return (data.type === 'question' || data.type === 'chat');
     })
     .map((data, index) => {
-      if (data.type !== 'question') {
-        return <Answer key={`chat-${index}`} answer={data.content} />;
+      if (data.type === 'question') {
+        return <Question key={`question-${index}`} question={data.content} />;
+      } else {
+        return <Report key={`chat-${index}`} answer={data.content} />;
       }
     });
 
   const sourceComponents = groupedData
     .filter(data => data.type === 'sourceBlock')
     .map((data, index) => (
-      <Sources key={`sourceBlock-${index}`} sources={data.items} />
+      <Sources key={`sourceBlock-${index}`} sources={data.items}/>
     ));
 
   const imageComponents = groupedData
@@ -63,13 +69,7 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
 
   return (
     <>
-      {initialQuestion && onNewSearch && (
-        <InteractiveSearchBar
-          question={initialQuestion.content}
-          onNewSearch={onNewSearch}
-        />
-      )}
-      {initialQuestion && !onNewSearch}
+      {initialQuestion && <Question question={initialQuestion.content} />}
       {orderedData.length > 0 && <LogsSection logs={allLogs} />}
       {subqueriesComponent && (
         <SubQuestions
@@ -79,9 +79,9 @@ export const ResearchResults: React.FC<ResearchResultsProps> = ({
       )}
       {sourceComponents}
       {imageComponents}
-      {finalReport && <Answer answer={finalReport.content} />}
-      {pathData && <AccessReport accessData={pathData.output} report={answer} chatBoxSettings={chatBoxSettings} />}
+      {finalReport && <Report answer={finalReport.content} researchId={currentResearchId} />}
+      {pathData && <AccessReport accessData={pathData.output} report={answer} chatBoxSettings={chatBoxSettings} onShareClick={onShareClick} />}
       {chatComponents}
     </>
   );
-};
+}; 

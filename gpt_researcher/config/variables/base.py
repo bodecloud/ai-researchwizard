@@ -31,6 +31,8 @@ class BaseConfig(TypedDict):
     LANGUAGE: str
     AGENT_ROLE: str | None
     SCRAPER: str
+    MAX_SCRAPER_WORKERS: int
+    SCRAPER_RATE_LIMIT_DELAY: float
     MAX_SUBTOPICS: int
     REPORT_SOURCE: str | None
     DOC_PATH: str
