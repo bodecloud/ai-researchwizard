@@ -71,7 +71,7 @@ class ChatAgentWithMemory:
         self.tavily_client = TavilyClient(api_key=os.environ.get("TAVILY_API_KEY"))
         
         # Process document and create vector store if not provided
-        if not self.vector_store and False:
+        if not self.vector_store:
             self._setup_vector_store()
     
     def _setup_vector_store(self):
