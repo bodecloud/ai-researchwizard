@@ -260,6 +260,11 @@ Two deployment options are available:
 1. A lightweight static frontend served by FastAPI
 2. A feature-rich NextJS application for advanced functionality
 
+> 💡 **GitHub Pages users:** GitHub Pages can only host the static frontend. Sync it with  
+> `npm run prepare:github-pages` (see [deployment docs](https://docs.gptr.dev/docs/gpt-researcher/deployment/github-pages)).  
+> Platforms that support Node.js should deploy `frontend/nextjs` with `npm run build && npm run start`  
+> – do **not** run `next export`.
+
 For detailed setup instructions and more information about the frontend features, please visit our [documentation page](https://docs.gptr.dev/docs/gpt-researcher/frontend/introduction).
 
 ## 🚀 Contributing
