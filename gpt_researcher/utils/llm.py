@@ -11,9 +11,9 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 import tiktoken
-from langchain.llms.base import BaseLLM
-from langchain.output_parsers import PydanticOutputParser
-from langchain.prompts import PromptTemplate
+from langchain_core.language_models.llms import BaseLLM
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
 
 from gpt_researcher.config.config import Config
 from gpt_researcher.llm_provider.generic.base import (
@@ -165,6 +165,8 @@ async def create_chat_completion(
     # validate input
     if model is None:
         raise ValueError("Model cannot be None")
+    if max_tokens is not None and max_tokens > 32000:
+        raise ValueError(f"Max tokens cannot be more than 32,000, but got {max_tokens}")
 
     # Initialize debug logger
     debug_logger: LLMDebugLogger = get_llm_debug_logger()

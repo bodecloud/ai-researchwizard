@@ -67,7 +67,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-from backend.server.server import app  # noqa: E402
+from backend.server.app import app  # noqa: E402
 
 if __name__ == "__main__":
     from typing import Any, cast
