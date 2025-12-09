@@ -1,5 +1,5 @@
 # Stage 1: Browser and build tools installation
-FROM python:3.13-slim-trixie AS install-browser
+FROM python:3.14-slim-trixie AS install-browser
 
 # Install Chromium, Chromedriver, Firefox, Geckodriver, and build tools in one layer
 RUN apt-get update \
