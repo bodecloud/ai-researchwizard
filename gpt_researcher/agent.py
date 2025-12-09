@@ -191,6 +191,7 @@ class GPTResearcher:
 
         # Set default encoding to utf-8
         self.encoding = kwargs.get('encoding', 'utf-8')
+        self.kwargs.pop('encoding', None)  # Remove encoding from kwargs to avoid passing it to LLM calls
 
         # Initialize components
         self.research_conductor: ResearchConductor = ResearchConductor(self)
@@ -404,6 +405,8 @@ class GPTResearcher:
             or not self.role.strip()
         ):
             await self._log_event("action", action="choose_agent")
+            # Filter out encoding parameter as it's not supported by LLM APIs
+            # filtered_kwargs = {k: v for k, v in self.kwargs.items() if k != 'encoding'}
             self.agent, self.role = await choose_agent(
                 query=self.query,
                 cfg=self.cfg,
@@ -411,7 +414,8 @@ class GPTResearcher:
                 cost_callback=self.add_costs,
                 headers=self.headers,
                 prompt_family=self.prompt_family,
-                **self.kwargs
+                **self.kwargs,
+                # **filtered_kwargs
             )
             await self._log_event(
                 "action",

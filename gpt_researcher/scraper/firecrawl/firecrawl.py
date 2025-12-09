@@ -1,110 +1,82 @@
-from __future__ import annotations
-
-import os
-
-from typing import TYPE_CHECKING, Any
-
 from bs4 import BeautifulSoup
-
-from gpt_researcher.utils.logger import get_formatted_logger
-
-if TYPE_CHECKING:
-    import logging
-
-    from requests import Response, Session
-
+import os
+from ..utils import get_relevant_images
 
 class FireCrawl:
-    def __init__(
-        self,
-        link: str,
-        session: Session | None = None,
-        *args: Any,
-        **kwargs: Any,
-    ):
-        self.link: str = link
-        self.session: Session | None = session
-        self.args: tuple[Any, ...] = args
-        self.kwargs: dict[str, Any] = kwargs
 
+    def __init__(self, link, session=None):
+        self.link = link
+        self.session = session
         from firecrawl import FirecrawlApp
-        self.firecrawl: FirecrawlApp = FirecrawlApp(api_key=self.get_api_key(), api_url=self.get_server_url())
-        self.logger: logging.Logger = get_formatted_logger(__name__)
+        self.firecrawl = FirecrawlApp(api_key=self.get_api_key(), api_url=self.get_server_url())
 
     def get_api_key(self) -> str:
-        """Gets the FireCrawl API key.
-
+        """
+        Gets the FireCrawl API key
         Returns:
-            Api key (str)
+        Api key (str)
         """
         try:
             api_key = os.environ["FIRECRAWL_API_KEY"]
         except KeyError:
-            raise Exception("FireCrawl API key not found. Please set the FIRECRAWL_API_KEY environment variable.")
+            raise Exception(
+                "FireCrawl API key not found. Please set the FIRECRAWL_API_KEY environment variable.")
         return api_key
 
     def get_server_url(self) -> str:
-        """Gets the FireCrawl server URL.
-
+        """
+        Gets the FireCrawl server URL.
         Default to official FireCrawl server ('https://api.firecrawl.dev').
-
         Returns:
-            server url (str)
+        server url (str)
         """
         try:
             server_url = os.environ["FIRECRAWL_SERVER_URL"]
         except KeyError:
-            server_url = "https://api.firecrawl.dev"
+            server_url = 'https://api.firecrawl.dev'
         return server_url
 
-    def scrape(self) -> tuple[str, list[dict[str, Any]], str]:
-        """Extracts content and title from a specified link using the FireCrawl Python SDK.
-
-        Images from the link are extracted using the functions from `gpt_researcher/scraper/utils.py`.
+    def scrape(self) -> tuple:
+        """
+        This function extracts content and title from a specified link using the FireCrawl Python SDK,
+        images from the link are extracted using the functions from `gpt_researcher/scraper/utils.py`.
 
         Returns:
-            A tuple containing the extracted content, a list of image URLs, and the title of the webpage specified by the `self.link` attribute.
-            It uses the FireCrawl Python SDK to extract and clean content from the webpage. If any exception occurs during the process, an error
-            message is printed and an empty result is returned.
+          The `scrape` method returns a tuple containing the extracted content, a list of image URLs, and
+        the title of the webpage specified by the `self.link` attribute. It uses the FireCrawl Python SDK to
+        extract and clean content from the webpage. If any exception occurs during the process, an error
+        message is printed and an empty result is returned.
         """
 
         try:
-            response = self.firecrawl.scrape_url(url=self.link, formats=["markdown"])
+            # Fixed: Changed from scrape_url() to scrape() to match FireCrawl SDK v4.6.0+
+            response = self.firecrawl.scrape(url=self.link, formats=["markdown"])
 
             # Check if the page has been scraped successfully
-            if "error" in response:
-                self.logger.error(f"Scrape failed! : {response['error']}")
+            # Fixed: Access metadata attributes directly (not as dict keys)
+            if response.metadata and response.metadata.error:
+                print("Scrape failed! : " + str(response.metadata.error))
                 return "", [], ""
-            elif (
-                ("metadata" in response and isinstance(response["metadata"], dict) and response["metadata"].get("statusCode") != 200)
-                or ("metadata" in getattr(response, "__dict__", {}) and getattr(response, "metadata", {}).get("statusCode") != 200)
-            ):
-                self.logger.error(f"Scrape failed! : {response}")
+            elif response.metadata and response.metadata.status_code and response.metadata.status_code != 200:
+                print(f"Scrape failed! Status code: {response.metadata.status_code}")
                 return "", [], ""
 
-            # Merge both possible response formats
-            if hasattr(response, "markdown") and hasattr(response, "metadata"):
-                content = response.markdown
-                title = response.metadata.get("title", "")
-            elif isinstance(response, dict):
-                # Some SDKs may return dicts
-                content = response.get("data", {}).get("markdown", "")
-                title = response.get("metadata", {}).get("title", "")
-            else:
-                content = ""
-                title = ""
+            # Extract the content (markdown) and title from FireCrawl response
+            # Fixed: Access attributes directly (not as dict keys)
+            content = response.markdown if response.markdown else ""
+            title = response.metadata.title if response.metadata and response.metadata.title else ""
 
             # Parse the HTML content of the response to create a BeautifulSoup object for the utility functions
-            assert self.session is not None
-            response_bs: Response = self.session.get(self.link, timeout=4)
-            soup: BeautifulSoup = BeautifulSoup(response_bs.content, "lxml", from_encoding=response_bs.encoding)
+            response_bs = self.session.get(self.link, timeout=4)
+            soup = BeautifulSoup(
+                response_bs.content, "lxml", from_encoding=response_bs.encoding
+            )
 
             # Get relevant images using the utility function
-            from gpt_researcher.scraper.utils import get_relevant_images
-            image_urls: list[dict[str, Any]] = get_relevant_images(soup, self.link)
+            image_urls = get_relevant_images(soup, self.link)
 
             return content, image_urls, title
 
         except Exception as e:
-            self.logger.exception(f"Error! : {e.__class__.__name__}: {e}")
+            print("Error! : " + str(e))
             return "", [], ""

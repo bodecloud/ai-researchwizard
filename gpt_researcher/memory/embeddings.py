@@ -23,6 +23,7 @@ _SUPPORTED_PROVIDERS: set[str] = {
     "google_vertexai",
     "huggingface",
     "mistralai",
+    "netmind",
     "nomic",
     "ollama",
     "openai",
@@ -38,6 +39,7 @@ _FALLBACK_PRIORITY: list[str] = [
     "openai",       # Then try API-based providers
     "aimlapi",
     "together",
+    "netmind",
     "mistralai",
     "cohere",
     "google_genai",
@@ -146,6 +148,10 @@ def _try_init_provider(
             from langchain_mistralai import MistralAIEmbeddings
 
             return MistralAIEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "netmind":
+            from langchain_netmind import NetmindEmbeddings
+
+            return NetmindEmbeddings(model=model, **embedding_kwargs)
         elif embedding_provider == "huggingface":
             from langchain_huggingface import HuggingFaceEmbeddings
 
