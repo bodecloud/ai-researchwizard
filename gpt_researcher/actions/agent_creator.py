@@ -6,11 +6,13 @@ import re
 from typing import Any, Callable
 
 import json_repair
+import logging
 
 from gpt_researcher.config import Config
 from gpt_researcher.prompts import PromptFamily
 from gpt_researcher.utils.llm import create_chat_completion
 
+logger = logging.getLogger(__name__)
 
 async def choose_agent(
     query: str,
@@ -95,8 +97,14 @@ async def handle_json_error(response: str | None) -> tuple[str, str]:
         if agent_dict.get("server") and agent_dict.get("agent_role_prompt"):  # pyright: ignore[reportAttributeAccessIssue]
             return agent_dict["server"], agent_dict["agent_role_prompt"]  # pyright: ignore[reportCallIssue, reportIndexIssue, reportOptionalSubscript]
     except Exception as e:
-        print(f"⚠️ Error in reading JSON and failed to repair with json_repair: {e}")
-        print(f"⚠️ LLM Response: `{response}`")
+        error_type = type(e).__name__
+        error_msg = str(e)
+        logger.warning(
+            f"Failed to parse agent JSON with json_repair: {error_type}: {error_msg}",
+            exc_info=True
+        )
+        if response:
+            logger.debug(f"LLM response that failed to parse: {response[:500]}...")
 
     json_string: str | None = extract_json_with_regex(response)
     if json_string is not None:
@@ -104,9 +112,12 @@ async def handle_json_error(response: str | None) -> tuple[str, str]:
             json_data: dict[str, Any] = json.loads(json_string)
             return json_data["server"], json_data["agent_role_prompt"]
         except json.JSONDecodeError as e:
-            print(f"Error decoding JSON: {e.__class__.__name__}: {e}")
+            logger.warning(
+                f"Failed to decode JSON from regex extraction: {str(e)}",
+                exc_info=True
+            )
 
-    print("No JSON found in the string. Falling back to Default Agent.")
+    logger.info("No valid JSON found in LLM response. Falling back to default agent.")
     return "Default Agent", (
         "You are an AI critical thinker research assistant. Your sole purpose is to write well written, "
         "critically acclaimed, objective and structured reports on given text."

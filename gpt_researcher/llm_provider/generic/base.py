@@ -330,8 +330,9 @@ class GenericLLMProvider:
                 extra_body["transforms"].append("middle-out")
 
             llm = ChatOpenAI(
-                base_url="https://openrouter.ai/api/v1",  # pyright: ignore[reportCallIssue]
-                api_key=os.environ["OPENROUTER_API_KEY"],  # pyright: ignore[reportCallIssue]
+                openai_api_base="https://openrouter.ai/api/v1",
+                openai_api_key=os.environ["OPENROUTER_API_KEY"],
+                request_timeout=180,
                 rate_limiter=rate_limiter,
                 extra_body=extra_body,  # pyright: ignore[reportCallIssue]
                 **kwargs,
