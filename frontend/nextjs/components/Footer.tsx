@@ -31,7 +31,7 @@ const Footer: React.FC<FooterProps> = ({ chatBoxSettings, setChatBoxSettings }) 
             © {new Date().getFullYear()} AI ResearchWizard. All rights reserved.
         </div>
         <div className="flex items-center gap-4 order-1 sm:order-2 mb-2 sm:mb-0">
-          <Link href={"https://github.com/bodencrouch/gpt-researcher"} target="_blank" className="p-1">
+          <Link href={"https://github.com/bodencrouch/ai-researchwizard"} target="_blank" className="p-1">
             <img
               src={"/img/github.svg"}
               alt="github"
