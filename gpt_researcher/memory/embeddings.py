@@ -23,6 +23,7 @@ _SUPPORTED_PROVIDERS: set[str] = {
     "google_vertexai",
     "huggingface",
     "mistralai",
+    "netmind",
     "nomic",
     "ollama",
     "openai",
@@ -38,6 +39,7 @@ _FALLBACK_PRIORITY: list[str] = [
     "openai",       # Then try API-based providers
     "aimlapi",
     "together",
+    "netmind",
     "mistralai",
     "cohere",
     "google_genai",
@@ -57,7 +59,7 @@ def _try_init_provider(
     **embedding_kwargs: Any,
 ) -> Any | None:
     """Try to initialize a single embedding provider.
-    
+
     Returns the embeddings object if successful, None if failed.
     """
     try:
@@ -146,6 +148,10 @@ def _try_init_provider(
             from langchain_mistralai import MistralAIEmbeddings
 
             return MistralAIEmbeddings(model=model, **embedding_kwargs)
+        elif embedding_provider == "netmind":
+            from langchain_netmind import NetmindEmbeddings
+
+            return NetmindEmbeddings(model=model, **embedding_kwargs)
         elif embedding_provider == "huggingface":
             from langchain_huggingface import HuggingFaceEmbeddings
 
@@ -213,7 +219,7 @@ class Memory:
         # Try the requested provider first
         logger.info(f"Attempting to initialize embedding provider: {embedding_provider}")
         _embeddings = _try_init_provider(embedding_provider, model, **embedding_kwargs)
-        
+
         if _embeddings is not None:
             logger.info(f"Successfully initialized {embedding_provider} embedding provider")
             self._embeddings = _embeddings
@@ -226,13 +232,13 @@ class Memory:
         for fallback_provider in _FALLBACK_PRIORITY:
             if fallback_provider == embedding_provider:
                 continue  # Already tried this one
-            
+
             if fallback_provider not in _SUPPORTED_PROVIDERS:
                 continue
 
             logger.info(f"Trying fallback embedding provider: {fallback_provider}")
             _embeddings = _try_init_provider(fallback_provider, model, **embedding_kwargs)
-            
+
             if _embeddings is not None:
                 logger.info(
                     f"Successfully initialized fallback embedding provider: {fallback_provider} "
