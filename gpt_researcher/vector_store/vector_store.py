@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from langchain.docstore.document import Document
-from langchain.vectorstores import VectorStore
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_community.vectorstores import VectorStore
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 class VectorStoreWrapper:
     """A Wrapper for LangchainVectorStore to handle GPT-Researcher Document Type."""

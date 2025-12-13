@@ -20,6 +20,7 @@
     "netlify:dev": "netlify dev",
     "netlify:build": "netlify build",
     "start:backend": "uvicorn main:app",
-    "start": "concurrently \"npm run start:backend\" \"netlify dev --skipWaiting\""
+    "start": "concurrently \"npm run start:backend\" \"netlify dev --skipWaiting\"",
+    "prepare:github-pages": "bash scripts/prepare-github-pages.sh"
   }
 }
