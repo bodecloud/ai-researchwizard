@@ -50,9 +50,12 @@ DEFAULT_CONFIG: BaseConfig = {
     "MCP_ALLOWED_ROOT_PATHS": [],  # List of allowed root paths for local file access
     "MCP_STRATEGY": "fast",  # MCP execution strategy: "fast", "deep", "disabled"
     "REASONING_EFFORT": "medium",
-    # RAG (Retrieval-Augmented Generation) settings
-    "ENABLE_RAG_REPORT_GENERATION": False,  # Enable RAG-based report generation for large contexts
-    "RAG_CHUNK_SIZE": 2000,  # Size of text chunks for vector storage
-    "RAG_CHUNK_OVERLAP": 200,  # Overlap between chunks
-    "RAG_MAX_CHUNKS_PER_SECTION": 10,  # Maximum chunks to retrieve per report section
+    
+    # Image generation settings (optional - requires GOOGLE_API_KEY)
+    # Free tier models: gemini-2.5-flash-image, gemini-2.0-flash-exp-image-generation
+    # Paid tier models: imagen-4.0-generate-001, imagen-4.0-fast-generate-001
+    "IMAGE_GENERATION_MODEL": "models/gemini-2.5-flash-image",
+    "IMAGE_GENERATION_MAX_IMAGES": 3,  # Maximum number of images to generate per report
+    "IMAGE_GENERATION_ENABLED": False,  # Master switch for inline image generation
+    "IMAGE_GENERATION_STYLE": "dark",  # Image style: "dark" (matches app theme), "light", or "auto"
 }

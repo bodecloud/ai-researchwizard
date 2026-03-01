@@ -1,30 +1,45 @@
-from __future__ import annotations
+"""Research conductor skill for GPT Researcher.
+
+This module provides the ResearchConductor class that manages and
+coordinates the research process including query planning, web searching,
+and context gathering.
+"""
 
 import asyncio
 import logging
+import os
 import random
 
-from typing import TYPE_CHECKING, Any, Callable
-
-from gpt_researcher.actions.agent_creator import choose_agent
-from gpt_researcher.actions.query_processing import get_search_results, plan_research_outline
-from gpt_researcher.actions.utils import stream_output
-from gpt_researcher.document import DocumentLoader, LangChainDocumentLoader, OnlineDocumentLoader
-from gpt_researcher.retrievers.retriever_abc import RetrieverABC
-from gpt_researcher.utils.enum import ReportSource
-from gpt_researcher.utils.logging_config import get_json_handler
-
-if TYPE_CHECKING:
-    from gpt_researcher.agent import GPTResearcher
+from ..actions.agent_creator import choose_agent
+from ..actions.query_processing import get_search_results, plan_research_outline
+from ..actions.utils import stream_output
+from ..document import DocumentLoader, LangChainDocumentLoader, OnlineDocumentLoader
+from ..utils.enum import ReportSource, ReportType
+from ..utils.logging_config import get_json_handler
 
 
 class ResearchConductor:
-    """Manages and coordinates the research process."""
+    """Manages and coordinates the research process.
 
-    def __init__(self, researcher: GPTResearcher):
-        self.researcher: GPTResearcher = researcher
-        self.logger: logging.Logger = logging.getLogger("research")
-        self.json_handler: Any | None = get_json_handler()
+    This class handles the main research workflow including planning
+    research queries, conducting web searches, managing MCP retrievers,
+    and gathering context from various sources.
+
+    Attributes:
+        researcher: The parent GPTResearcher instance.
+        logger: Logger for research events.
+        json_handler: Handler for JSON logging.
+    """
+
+    def __init__(self, researcher):
+        """Initialize the ResearchConductor.
+
+        Args:
+            researcher: The GPTResearcher instance that owns this conductor.
+        """
+        self.researcher = researcher
+        self.logger = logging.getLogger('research')
+        self.json_handler = get_json_handler()
         # Add cache for MCP results to avoid redundant calls
         self._mcp_results_cache = None
         # Track MCP query count for balanced mode

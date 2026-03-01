@@ -1,11 +1,14 @@
-from __future__ import annotations
+"""Configuration management for GPT Researcher.
+
+This module provides the Config class that manages all configuration
+settings for GPT Researcher including LLM providers, embeddings,
+retrievers, and various operational parameters.
+"""
 
 import json
 import os
 import warnings
-from contextlib import suppress
-from datetime import timedelta
-from typing import Any, ClassVar, Dict, List, Self, Union, get_args, get_origin
+from typing import Any, Dict, List, Type, Union, get_args, get_origin
 
 # Import fallback logic from the new module
 from gpt_researcher.config.fallback_logic import set_llm_attributes
@@ -13,63 +16,36 @@ from gpt_researcher.config.variables.base import BaseConfig
 from gpt_researcher.config.variables.default import DEFAULT_CONFIG
 from gpt_researcher.llm_provider import GenericLLMProvider
 from gpt_researcher.llm_provider.generic.base import ReasoningEfforts
-from gpt_researcher.retrievers.utils import get_all_retriever_names
 
-with suppress(ImportError):
-    from litellm import _logging  # pyright: ignore[reportMissingImports]
-    _logging._turn_on_debug()
-
-
-def _log_config_section(
-    section_name: str,
-    message: str,
-    level: str = "INFO",
-    verbose: bool = True,
-) -> None:
-    """Helper function for consistent config logging."""
-    if not verbose:
-        return
-    from colorama import Fore, Style
-    colors: dict[str, str] = {
-        "DEBUG": Fore.LIGHTBLACK_EX,
-        "INFO": Fore.CYAN,
-        "WARN": Fore.YELLOW,
-        "ERROR": Fore.RED,
-        "SUCCESS": Fore.GREEN,
-    }
-    color: str = colors.get(level, Fore.WHITE)
-    print(f"{color}[{level}] {section_name}: {message}{Style.RESET_ALL}")
+from .variables.base import BaseConfig
+from .variables.default import DEFAULT_CONFIG
 
 
 class Config:
-    """Config class for GPT Researcher."""
+    """Configuration manager for GPT Researcher.
+
+    Handles loading, parsing, and managing all configuration settings
+    from files, environment variables, and defaults.
+
+    Attributes:
+        CONFIG_DIR: Directory containing configuration files.
+        config_path: Path to the configuration file.
+        llm_kwargs: Additional keyword arguments for LLM.
+        embedding_kwargs: Additional keyword arguments for embeddings.
+    """
 
     CONFIG_DIR: ClassVar[str] = os.path.join(os.path.dirname(__file__), "variables")
     DefaultConfig: ClassVar[Self] | None = None
 
-    # Class-level caching for fallback providers
-    _cached_fast_llm_fallback_providers: ClassVar[list[GenericLLMProvider]] = []
-    _cached_smart_llm_fallback_providers: ClassVar[list[GenericLLMProvider]] = []
-    _cached_strategic_llm_fallback_providers: ClassVar[list[GenericLLMProvider]] = []
-    _fallbacks_initialized: ClassVar[bool] = False
+    def __init__(self, config_path: str | None = None):
+        """Initialize the config class.
 
-    def __new__(cls, *args, **kwargs) -> Self:
-        if cls.DefaultConfig is None:
-            cls.DefaultConfig = super().__new__(cls)
-        if not args and not kwargs:
-            return cls.DefaultConfig
-        if args and args[0] == "default":
-            return cls.DefaultConfig
-        if kwargs and kwargs.get("config_path") == "default":
-            return cls.DefaultConfig
-        return super().__new__(cls)
-
-    def __init__(
-        self,
-        config_path: str | None = None,
-    ):
-        """Initialize the config class."""
-        self.config_path: str | None = config_path
+        Args:
+            config_path: Optional path to a JSON configuration file.
+        """
+        self.config_path = config_path
+        self.llm_kwargs: Dict[str, Any] = {}
+        self.embedding_kwargs: Dict[str, Any] = {}
 
         # Initialize lists for instantiated fallback providers
         self.fast_llm_fallback_providers: list[GenericLLMProvider] = []
@@ -101,11 +77,20 @@ class Config:
         # Allowed root paths for MCP servers
         self.mcp_allowed_root_paths: list[str] = config_to_use.get("MCP_ALLOWED_ROOT_PATHS", []) or []
 
-    # Smart LLM properties
-    @property
-    def smart_llm(self) -> str:
-        """Get the smart LLM configuration."""
-        return self._smart_llm
+    def _set_attributes(self, config: Dict[str, Any]) -> None:
+        """Set configuration attributes from config dictionary.
+
+        Merges environment variables with config file values, with
+        environment variables taking precedence.
+
+        Args:
+            config: Dictionary of configuration key-value pairs.
+        """
+        for key, value in config.items():
+            env_value = os.getenv(key)
+            if env_value is not None:
+                value = self.convert_env_value(key, env_value, BaseConfig.__annotations__[key])
+            setattr(self, key.lower(), value)
 
     @smart_llm.setter
     def smart_llm(self, value: str) -> None:
@@ -312,10 +297,20 @@ class Config:
             setattr(self, key.casefold(), value)
 
     def _set_embedding_attributes(self) -> None:
-        self.embedding_provider, self.embedding_model = self.parse_embedding(self.embedding)
-        self.embedding_fallback_list = []
+        """Parse and set embedding provider and model attributes."""
+        self.embedding_provider, self.embedding_model = self.parse_embedding(
+            self.embedding
+        )
+
+    def _set_llm_attributes(self) -> None:
+        """Parse and set LLM provider and model attributes for all LLM types."""
+        self.fast_llm_provider, self.fast_llm_model = self.parse_llm(self.fast_llm)
+        self.smart_llm_provider, self.smart_llm_model = self.parse_llm(self.smart_llm)
+        self.strategic_llm_provider, self.strategic_llm_model = self.parse_llm(self.strategic_llm)
+        self.reasoning_effort = self.parse_reasoning_effort(os.getenv("REASONING_EFFORT"))
 
     def _handle_deprecated_attributes(self) -> None:
+        """Handle deprecated configuration attributes with warnings."""
         if os.getenv("EMBEDDING_PROVIDER") is not None:
             warnings.warn(
                 "EMBEDDING_PROVIDER is deprecated and will be removed soon. Use EMBEDDING instead.",

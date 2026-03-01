@@ -1,4 +1,35 @@
-from __future__ import annotations
+"""Context compression utilities for GPT Researcher.
+
+This module provides classes for compressing and retrieving relevant
+context from documents using embeddings and similarity filtering.
+
+The compression pipeline:
+1. Splits documents into chunks
+2. Filters chunks by embedding similarity to the query
+3. Returns the most relevant chunks as context
+
+Classes:
+    VectorstoreCompressor: Retrieves context from a vector store.
+    ContextCompressor: Compresses raw documents using embedding similarity.
+    WrittenContentCompressor: Compresses previously written content sections.
+"""
+
+import asyncio
+import os
+from typing import Optional
+
+from langchain_classic.retrievers import ContextualCompressionRetriever
+from langchain_classic.retrievers.document_compressors import (
+    DocumentCompressorPipeline,
+    EmbeddingsFilter,
+)
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+from ..memory.embeddings import OPENAI_EMBEDDING_MODEL
+from ..prompts import PromptFamily
+from ..utils.costs import estimate_embedding_cost
+from ..vector_store import VectorStoreWrapper
+from .retriever import SearchAPIRetriever, SectionRetriever
 
 import asyncio
 import logging
@@ -41,85 +72,98 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 class VectorstoreCompressor:
+    """Retrieves and compresses context from a vector store.
+
+    Uses similarity search on an existing vector store to find
+    relevant documents for a given query.
+
+    Attributes:
+        vector_store: The vector store wrapper to search.
+        max_results: Maximum number of results to return.
+        filter: Optional filter for vector store queries.
+    """
+
     def __init__(
         self,
         vector_store: VectorStoreWrapper,
         max_results: int = 7,
-        filter: dict[str, Any] | None = None,
+        filter: Optional[dict] = None,
         prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
         **kwargs,
     ):
-        self.vector_store: VectorStoreWrapper = vector_store
-        self.max_results: int = max_results
-        self.filter: dict[str, Any] | None = filter
-        self.kwargs: dict[str, Any] = kwargs
-        self.prompt_family: type[PromptFamily] | PromptFamily = prompt_family
-
-    async def async_get_context(
-        self,
-        query: str,
-        max_results: int = 5,
-        cost_callback: Callable[[float], None] | None = None,
-    ) -> str:
-        """Get relevant context from vector store.
+        """Initialize the VectorstoreCompressor.
 
         Args:
-            query (str): The query to retrieve relevant documents from.
-            max_results (int): The maximum number of results to return.
-            cost_callback (Callable[[float], None]): The callback to call when the cost is estimated.
+            vector_store: The vector store to search.
+            max_results: Maximum number of results to return.
+            filter: Optional filter dictionary for queries.
+            prompt_family: Prompt family for formatting output.
+            **kwargs: Additional keyword arguments.
         """
-        results: list[Document] = await self.vector_store.asimilarity_search(query=query, k=max_results, filter=self.filter)
-        try:
-            if cost_callback is not None:
-                cost_callback(estimate_embedding_cost(model=OPENAI_EMBEDDING_MODEL, docs=results))
-        except Exception as e:
-            print(f"Error in async_get_context: {e.__class__.__name__}: {e}")
-            logger.error(f"Error in async_get_context: {e.__class__.__name__}: {e}")
-        return self.prompt_family.pretty_print_docs(results, max_results)
+        self.vector_store = vector_store
+        self.max_results = max_results
+        self.filter = filter
+        self.kwargs = kwargs
+        self.prompt_family = prompt_family
+
+    async def async_get_context(self, query: str, max_results: int = 5) -> str:
+        """Get relevant context from the vector store.
+
+        Args:
+            query: The search query.
+            max_results: Maximum number of results to return.
+
+        Returns:
+            Formatted string of relevant document content.
+        """
+        results = await self.vector_store.asimilarity_search(query=query, k=max_results, filter=self.filter)
+        return self.prompt_family.pretty_print_docs(results)
 
 
 class ContextCompressor:
+    """Compresses raw documents to extract relevant context.
+
+    Uses embedding similarity to filter document chunks and return
+    only the most relevant content for a given query.
+
+    Attributes:
+        documents: List of documents to compress.
+        embeddings: Embedding model for similarity calculation.
+        max_results: Maximum number of results to return.
+        similarity_threshold: Minimum similarity score for inclusion.
+    """
+
     def __init__(
         self,
-        documents: list[dict[str, Any]],
-        embeddings: list[float],
+        documents,
+        embeddings,
         max_results: int = 5,
         prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
         **kwargs,
     ):
-        self.max_results: int = max_results
-        self.documents: list[dict[str, Any]] = documents
-        self.kwargs: dict[str, Any] = kwargs
-        self.embeddings: list[float] = embeddings
-        self.similarity_threshold: float = float(os.environ.get("SIMILARITY_THRESHOLD", 0.35))
-        self.prompt_family: type[PromptFamily] | PromptFamily = prompt_family
+        """Initialize the ContextCompressor.
 
-    def __get_contextual_retriever(self) -> ContextualCompressionRetriever:
-        # Ensure documents have the raw_content key, which is needed by SearchAPIRetriever
-        valid_documents: list[dict[str, Any]] = []
-        for doc in self.documents:
-            if isinstance(doc, dict):
-                if "raw_content" not in doc or not doc["raw_content"]:
-                    logger.warning(f"Document missing raw_content, adding empty string: {doc}")
-                    doc["raw_content"] = ""
+        Args:
+            documents: List of documents to compress.
+            embeddings: Embedding model instance.
+            max_results: Maximum number of results to return.
+            prompt_family: Prompt family for formatting output.
+            **kwargs: Additional keyword arguments.
+        """
+        self.max_results = max_results
+        self.documents = documents
+        self.kwargs = kwargs
+        self.embeddings = embeddings
+        self.similarity_threshold = os.environ.get("SIMILARITY_THRESHOLD", 0.35)
+        self.prompt_family = prompt_family
 
-                # Only include documents that have non-empty content
-                if doc["raw_content"].strip():
-                    valid_documents.append(doc)
-                else:
-                    logger.warning(f"Skipping document with empty raw_content: {doc}")
-            else:
-                logger.warning(f"Invalid document format (not a dict): {doc.__class__.__name__}")
+    def __get_contextual_retriever(self):
+        """Build the contextual compression retriever pipeline.
 
-        # If no valid documents after filtering, return a retriever that will produce no results
-        if not valid_documents:
-            logger.warning(f"No valid documents with content after filtering. Original count: {len(self.documents)}")
-            # Return a retriever that will produce empty results safely
-            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            pipeline_compressor = DocumentCompressorPipeline(transformers=[splitter])
-            base_retriever = SearchAPIRetriever(pages=[])
-            return ContextualCompressionRetriever(base_compressor=pipeline_compressor, base_retriever=base_retriever)
-
+        Returns:
+            A ContextualCompressionRetriever configured with text splitting
+            and embedding-based filtering.
+        """
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         relevance_filter = EmbeddingsFilter(embeddings=self.embeddings, similarity_threshold=self.similarity_threshold)
         pipeline_compressor = DocumentCompressorPipeline(transformers=[splitter, relevance_filter])
@@ -127,31 +171,19 @@ class ContextCompressor:
         contextual_retriever = ContextualCompressionRetriever(base_compressor=pipeline_compressor, base_retriever=base_retriever)
         return contextual_retriever
 
-    async def async_get_context(
-        self,
-        query: str,
-        max_results: int = 5,
-        cost_callback: Callable[[float], None] | None = None,
-    ) -> str:
-        # Check if there are any documents to process to prevent downstream errors
-        # in LangChain's EmbeddingsFilter when handling empty document lists.
-        if not self.documents:
-            logger.warning("No documents provided to ContextCompressor.async_get_context")
-            return ""
+    async def async_get_context(self, query: str, max_results: int = 5, cost_callback=None) -> str:
+        """Get relevant context from documents asynchronously.
 
-        # Additional check for content quality
-        has_content = False
-        for doc in self.documents:
-            if isinstance(doc, dict) and doc.get("raw_content", "").strip():
-                has_content = True
-                break
+        Args:
+            query: The search query.
+            max_results: Maximum number of results to return.
+            cost_callback: Optional callback for tracking embedding costs.
 
-        if not has_content:
-            logger.warning("No documents have non-empty raw_content")
-            return ""
-
-        compressed_docs: ContextualCompressionRetriever = self.__get_contextual_retriever()
-        if cost_callback is not None:
+        Returns:
+            Formatted string of relevant document content.
+        """
+        compressed_docs = self.__get_contextual_retriever()
+        if cost_callback:
             cost_callback(estimate_embedding_cost(model=OPENAI_EMBEDDING_MODEL, docs=self.documents))
 
         try:
@@ -164,44 +196,38 @@ class ContextCompressor:
 
 
 class WrittenContentCompressor:
-    def __init__(
-        self,
-        documents: list[dict[str, Any]],
-        embeddings: list[float],
-        similarity_threshold: float,
-        **kwargs,
-    ):
-        self.documents: list[dict[str, Any]] = documents
-        self.kwargs: dict[str, Any] = kwargs
-        self.embeddings: list[float] = embeddings
-        self.similarity_threshold: float = similarity_threshold
+    """Compresses previously written content sections.
 
-    def __get_contextual_retriever(self) -> ContextualCompressionRetriever:
-        # Ensure documents have the written_content key needed by SectionRetriever
-        valid_documents: list[dict[str, Any]] = []
-        for doc in self.documents:
-            if isinstance(doc, dict):
-                if "written_content" not in doc or not doc["written_content"]:
-                    logger.warning(f"Document missing written_content, adding empty string: {doc}")
-                    doc["written_content"] = ""
+    Specialized compressor for finding relevant sections from
+    previously written report content, preserving section titles
+    and structure.
 
-                # Only include documents that have non-empty content
-                if doc["written_content"].strip():
-                    valid_documents.append(doc)
-                else:
-                    logger.warning(f"Skipping document with empty written_content: {doc}")
-            else:
-                logger.warning(f"Invalid document format (not a dict): {doc.__class__.__name__}")
+    Attributes:
+        documents: List of written content sections.
+        embeddings: Embedding model for similarity calculation.
+        similarity_threshold: Minimum similarity score for inclusion.
+    """
 
-        # If no valid documents after filtering, return a retriever that will produce no results
-        if not valid_documents:
-            logger.warning(f"No valid documents with content after filtering. Original count: {len(self.documents)}")
-            # Return a retriever that will produce empty results safely
-            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            pipeline_compressor = DocumentCompressorPipeline(transformers=[splitter])
-            base_retriever = SectionRetriever(sections=[])
-            return ContextualCompressionRetriever(base_compressor=pipeline_compressor, base_retriever=base_retriever)
+    def __init__(self, documents, embeddings, similarity_threshold: float, **kwargs):
+        """Initialize the WrittenContentCompressor.
 
+        Args:
+            documents: List of written content sections.
+            embeddings: Embedding model instance.
+            similarity_threshold: Minimum similarity score for inclusion.
+            **kwargs: Additional keyword arguments.
+        """
+        self.documents = documents
+        self.kwargs = kwargs
+        self.embeddings = embeddings
+        self.similarity_threshold = similarity_threshold
+
+    def __get_contextual_retriever(self):
+        """Build the contextual compression retriever for sections.
+
+        Returns:
+            A ContextualCompressionRetriever configured for section retrieval.
+        """
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         relevance_filter = EmbeddingsFilter(embeddings=self.embeddings, similarity_threshold=self.similarity_threshold)
         pipeline_compressor = DocumentCompressorPipeline(transformers=[splitter, relevance_filter])
@@ -209,34 +235,31 @@ class WrittenContentCompressor:
         contextual_retriever = ContextualCompressionRetriever(base_compressor=pipeline_compressor, base_retriever=base_retriever)
         return contextual_retriever
 
-    def __pretty_docs_list(self, docs: list[Document], top_n: int) -> list[str]:
+    def __pretty_docs_list(self, docs, top_n: int) -> list[str]:
+        """Format documents as a list of title/content strings.
+
+        Args:
+            docs: List of documents to format.
+            top_n: Maximum number of documents to include.
+
+        Returns:
+            List of formatted document strings.
+        """
         return [f"Title: {d.metadata.get('section_title')}\nContent: {d.page_content}\n" for i, d in enumerate(docs) if i < top_n]
 
-    async def async_get_context(
-        self,
-        query: str,
-        max_results: int = 5,
-        cost_callback: Callable[[float], None] | None = None,
-    ) -> list[str]:
-        # Check if there are any documents to process to prevent downstream errors
-        # in LangChain's EmbeddingsFilter when handling empty document lists.
-        if not self.documents:
-            logger.warning("No documents provided to WrittenContentCompressor.async_get_context")
-            return []
+    async def async_get_context(self, query: str, max_results: int = 5, cost_callback=None) -> list[str]:
+        """Get relevant written content sections asynchronously.
 
-        # Additional check for content quality
-        has_content = False
-        for doc in self.documents:
-            if isinstance(doc, dict) and doc.get("written_content", "").strip():
-                has_content = True
-                break
+        Args:
+            query: The search query.
+            max_results: Maximum number of results to return.
+            cost_callback: Optional callback for tracking embedding costs.
 
-        if not has_content:
-            logger.warning("No documents have non-empty written_content")
-            return []
-
-        compressed_docs: ContextualCompressionRetriever = self.__get_contextual_retriever()
-        if cost_callback is not None:
+        Returns:
+            List of formatted section strings.
+        """
+        compressed_docs = self.__get_contextual_retriever()
+        if cost_callback:
             cost_callback(estimate_embedding_cost(model=OPENAI_EMBEDDING_MODEL, docs=self.documents))
 
         try:

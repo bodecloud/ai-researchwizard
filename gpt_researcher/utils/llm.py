@@ -1,92 +1,42 @@
-# libraries
+"""LLM utilities for GPT Researcher.
+
+This module provides utility functions for interacting with various
+LLM providers through a unified interface.
+"""
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-import re
-import time
-import traceback
-from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import tiktoken
 from langchain_core.language_models.llms import BaseLLM
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import PromptTemplate
 
-from gpt_researcher.config.config import Config
 from gpt_researcher.llm_provider.generic.base import (
+    NO_SUPPORT_TEMPERATURE_MODELS,
     SUPPORT_REASONING_EFFORT_MODELS,
-    GenericLLMProvider,
     ReasoningEfforts,
 )
-from gpt_researcher.prompts import PromptFamily
-from gpt_researcher.utils.costs import estimate_llm_cost
-from gpt_researcher.utils.llm_debug_logger import LLMDebugLogger, get_llm_debug_logger
-from gpt_researcher.utils.validators import Subtopics
 
-if TYPE_CHECKING:
-    from gpt_researcher.skills.llm_visualizer import LLMInteractionVisualizer
+from ..prompts import PromptFamily
+from .costs import estimate_llm_cost
+from .validators import Subtopics
 
 
-logger: logging.Logger = logging.getLogger(__name__)
-
-
-def get_llm(
-    llm_provider: str,
-    cfg: Config | None = None,
-    **kwargs,
-) -> GenericLLMProvider:
-    """Initialize an LLM provider with fallback support.
+def get_llm(llm_provider: str, **kwargs):
+    """Get an LLM provider instance.
 
     Args:
-        llm_provider: Provider name (e.g., 'openai')
-        cfg: Configuration object. If None, a new one will be created.
-        **kwargs: Additional keyword arguments for the provider
+        llm_provider: The name of the LLM provider (e.g., 'openai', 'anthropic').
+        **kwargs: Additional keyword arguments passed to the provider.
 
     Returns:
-        LLM provider instance with fallback support if fallbacks are configured
+        A GenericLLMProvider instance configured for the specified provider.
     """
-    from gpt_researcher.llm_provider.generic.base import GenericLLMProvider
-    from gpt_researcher.llm_provider.generic.fallback import FallbackGenericLLMProvider
-
-    # Check if this LLM has fallbacks configured
-    config_obj: Config = Config() if cfg is None else cfg
-    if "model" in kwargs:
-        model_name: str = kwargs.get("model")
-
-        # Get appropriate fallback providers based on model configuration
-        fallback_provider_objects: list[GenericLLMProvider] = []
-        if config_obj.fast_llm_model == model_name and config_obj.fast_llm_provider == llm_provider:
-            fallback_provider_objects = config_obj.fast_llm_fallback_providers
-        elif config_obj.smart_llm_model == model_name and config_obj.smart_llm_provider == llm_provider:
-            fallback_provider_objects = config_obj.smart_llm_fallback_providers
-        elif config_obj.strategic_llm_model == model_name and config_obj.strategic_llm_provider == llm_provider:
-            fallback_provider_objects = config_obj.strategic_llm_fallback_providers
-
-        # Extract the parameters needed for FallbackGenericLLMProvider
-        chat_log: Any | None = kwargs.get("chat_log")
-        verbose: bool = kwargs.get("verbose", True)
-
-        # Create primary provider first
-        try:
-            primary_provider: GenericLLMProvider = GenericLLMProvider.from_provider(llm_provider, **kwargs)
-
-            # If we have fallback providers, create a fallback wrapper
-            if fallback_provider_objects:
-                return FallbackGenericLLMProvider(primary_provider.llm, fallback_providers=fallback_provider_objects, chat_log=chat_log, verbose=verbose)
-            return primary_provider
-        except Exception as e:
-            # If primary provider fails and we have fallbacks, use first fallback as primary
-            if fallback_provider_objects:
-                logger.warning(f"Primary provider {llm_provider} failed: {e.__class__.__name__}: {e}. Using first fallback as primary.")
-                primary: GenericLLMProvider = fallback_provider_objects.pop(0)
-                return FallbackGenericLLMProvider(primary.llm, fallback_providers=fallback_provider_objects, chat_log=chat_log, verbose=verbose)
-            # No fallbacks available, re-raise the exception
-            raise
-
-    # Otherwise, use standard provider without fallbacks
+    from gpt_researcher.llm_provider import GenericLLMProvider
     return GenericLLMProvider.from_provider(llm_provider, **kwargs)
 
 

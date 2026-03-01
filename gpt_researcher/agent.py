@@ -1,15 +1,14 @@
+"""GPT Researcher agent module.
 
-from __future__ import annotations
+This module provides the main GPTResearcher class that orchestrates
+autonomous research and report generation using LLMs and web search.
+"""
 
 import json
 import os
-import time
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import Any, Optional
 
-from litellm import cast
-from numpy import roll
-
-from gpt_researcher.actions import (
+from .actions import (
     add_references,
     choose_agent,
     extract_headers,
@@ -18,6 +17,20 @@ from gpt_researcher.actions import (
     get_search_results,
     table_of_contents,
 )
+from .config import Config
+from .llm_provider import GenericLLMProvider
+from .memory import Memory
+from .prompts import get_prompt_family
+from .skills.browser import BrowserManager
+from .skills.context_manager import ContextManager
+from .skills.curator import SourceCurator
+from .skills.deep_research import DeepResearchSkill
+from .skills.image_generator import ImageGenerator
+from .skills.researcher import ResearchConductor
+from .skills.writer import ReportGenerator
+from .utils.enum import ReportSource, ReportType, Tone
+from .utils.llm import create_chat_completion
+from .vector_store import VectorStoreWrapper
 
 # from gpt_researcher.actions.report_analyzer import analyze_query_requirements, get_research_configuration
 from gpt_researcher.actions.report_analyzer import analyze_query_requirements, get_research_configuration
@@ -47,6 +60,20 @@ if TYPE_CHECKING:
 
 
 class GPTResearcher:
+    """Main GPT Researcher agent class.
+
+    This class orchestrates the entire research process including
+    web searching, content scraping, context management, and
+    report generation using LLMs.
+
+    Attributes:
+        query: The research query or question.
+        report_type: Type of report to generate.
+        cfg: Configuration object.
+        context: Accumulated research context.
+        research_costs: Total accumulated API costs.
+    """
+
     def __init__(
         self,
         query: str,
@@ -199,13 +226,31 @@ class GPTResearcher:
         self.context_manager: ContextManager = ContextManager(self)
         self.scraper_manager: BrowserManager = BrowserManager(self)
         self.source_curator: SourceCurator = SourceCurator(self)
-        self.deep_researcher: DeepResearchSkill | None = (
-            DeepResearchSkill(self)
-            if report_type == ReportType.DeepResearch.value
-            else None
-        )
+        self.deep_researcher: Optional[DeepResearchSkill] = None
+        if report_type == ReportType.DeepResearch.value:
+            self.deep_researcher = DeepResearchSkill(self)
+
+        # Initialize image generator (optional - only if configured)
+        self.image_generator: Optional[ImageGenerator] = ImageGenerator(self)
+        self.available_images: list = []  # Pre-generated images ready for embedding
+        self._research_id: str = ""  # Unique ID for this research session
+
         # Handle MCP strategy configuration with backwards compatibility
         self.mcp_strategy = self._resolve_mcp_strategy(mcp_strategy, mcp_max_iterations)
+    
+    def _generate_research_id(self) -> str:
+        """Generate a unique research ID for this session.
+        
+        Returns:
+            A unique string identifier for this research session.
+        """
+        if not self._research_id:
+            import hashlib
+            import time
+            # Create unique ID from query + timestamp
+            unique_str = f"{self.query}_{time.time()}"
+            self._research_id = f"research_{hashlib.md5(unique_str.encode()).hexdigest()[:12]}"
+        return self._research_id
 
         # Initialize structured research pipeline
 #        self.structured_pipeline: StructuredResearchPipeline | None = None
@@ -348,25 +393,24 @@ class GPTResearcher:
             except Exception as e:
                 import logging
 
-                logging.getLogger("research").error(
-                    f"Error in _log_event: {e.__class__.__name__}: {e}",
-                    exc_info=True,
-                )
+    async def conduct_research(self, on_progress=None):
+        """Conduct the research process.
 
-    async def conduct_research(
-        self,
-        on_progress: Callable[[str], None] | None = None,
-    ) -> list[str]:
-        await self._log_event(
-            "research",
-            step="start",
-            details={
-                "query": self.query,
-                "report_type": self.report_type,
-                "agent": self.agent,
-                "role": self.role,
-            },
-        )
+        This method orchestrates the main research workflow including
+        agent selection, web searching, and context gathering.
+
+        Args:
+            on_progress: Optional callback for progress updates during deep research.
+
+        Returns:
+            The accumulated research context.
+        """
+        await self._log_event("research", step="start", details={
+            "query": self.query,
+            "report_type": self.report_type,
+            "agent": self.agent,
+            "role": self.role
+        })
 
         # Handle deep research separately
         if (
@@ -436,31 +480,36 @@ class GPTResearcher:
         )
         self.context = await self.research_conductor.conduct_research()
 
-        await self._log_event(
-            "research",
-            step="research_completed",
-            details={"context_length": len(self.context)},
-        )
+        await self._log_event("research", step="research_completed", details={
+            "context_length": len(self.context)
+        })
+        
+        # Pre-generate images if enabled (happens BEFORE report writing for better UX)
+        self.available_images = []
+        if self.image_generator and self.image_generator.is_enabled():
+            await self._log_event("research", step="planning_images")
+            # Convert context list to string for analysis
+            context_str = "\n\n".join(self.context) if isinstance(self.context, list) else str(self.context)
+            self.available_images = await self.image_generator.plan_and_generate_images(
+                context=context_str,
+                query=self.query,
+                research_id=self._generate_research_id(),
+            )
+            await self._log_event("research", step="images_pre_generated", details={
+                "images_count": len(self.available_images)
+            })
+        
+        return self.context
 
-        # Initialize structured research pipeline if needed and not disabled
-        if (
-            not self.disable_structured_research
-            and self.research_config
-            and self.research_config.get("enable_structured_research")
-        ):
-            await self._log_event("action", action="initialize_structured_research")
-            from gpt_researcher.llm_provider import GenericLLMProvider
+    async def _handle_deep_research(self, on_progress=None):
+        """Handle deep research execution and logging.
 
-            llm_provider: GenericLLMProvider = GenericLLMProvider(self.cfg.smart_llm_provider)
-            self.structured_pipeline = StructuredResearchPipeline(llm_provider, self.cfg)
+        Args:
+            on_progress: Optional callback for progress updates.
 
-        return [] if self.context is None else self.context
-
-    async def _handle_deep_research(
-        self,
-        on_progress: Callable[[str], None] | None = None,
-    ) -> list[str]:
-        """Handle deep research execution and logging."""
+        Returns:
+            The accumulated research context from deep research.
+        """
         # Log deep research configuration
         await self._log_event(
             "research",
@@ -518,118 +567,122 @@ class GPTResearcher:
 
     async def write_report(
         self,
-        existing_headers: list[str] | None = None,
-        relevant_written_contents: list[str] | None = None,
-        ext_context: list[dict[str, Any]] | None = None,
-        custom_prompt: str = "",
+        existing_headers: list = [],
+        relevant_written_contents: list = [],
+        ext_context=None,
+        custom_prompt="",
     ) -> str:
-        # Enable LLM visualization for report generation
-        enable_llm_visualization()
+        """Write the research report.
 
-        await self._log_event(
-            "research",
-            step="writing_report",
-            details={
-                "existing_headers": existing_headers,
-                "context_source": "external" if ext_context else "internal",
-                #                "structured_research_enabled": self.structured_pipeline is not None and not self.disable_structured_research,
-            },
-        )
+        Args:
+            existing_headers: List of existing headers to avoid duplication.
+            relevant_written_contents: List of previously written content for context.
+            ext_context: External context to use instead of internal context.
+            custom_prompt: Custom prompt to guide report generation.
 
-        # Use structured research if available and enabled and not disabled
-        if (
-            not self.disable_structured_research
-            and self.structured_pipeline
-            and self.research_config
-        ):
-            try:
-                await self._log_event("research", step="running_structured_research")
+        Returns:
+            The generated report as a string.
+        """
+        # Use pre-generated images if available (generated during conduct_research)
+        has_available_images = bool(self.available_images)
+        
+        await self._log_event("research", step="writing_report", details={
+            "existing_headers": existing_headers,
+            "context_source": "external" if ext_context else "internal",
+            "available_images_count": len(self.available_images),
+        })
 
-                # Run structured research pipeline
-                results: ResearchResults = await self.structured_pipeline.run_structured_research(
-                    topic=self.query,
-                    sources=self.research_sources,
-                    enable_debate=self.research_config.get("enable_debate", False),
-                    min_confidence=self.research_config.get("min_confidence", 0.5),
-                    max_sections=self.research_config.get("max_sections", 8),
-                )
-
-                # Export as markdown report
-                report: str = self.structured_pipeline.export_results(results, format="markdown")
-
-                await self._log_event(
-                    "research",
-                    step="structured_report_completed",
-                    details={
-                        "report_length": len(report),
-                        "fact_count": results.fact_summary.get("total_facts", 0),
-                        "sections": len(results.narrative.sections),
-                        "overall_quality": results.narrative.overall_quality.value,
-                    },
-                )
-
-                return report
-
-            except Exception as e:
-                await self._log_event(
-                    "research",
-                    step="structured_research_failed",
-                    details={"error": f"{e.__class__.__name__}: {e}"},
-                )
-                # Fall back to regular report generation
-                pass
-
-        # Regular report generation
-        report: str = await self.report_generator.write_report(
+        # Generate report with available images embedded
+        report = await self.report_generator.write_report(
             existing_headers=existing_headers,
             relevant_written_contents=relevant_written_contents,
             ext_context=ext_context or self.context,
             custom_prompt=custom_prompt,
+            available_images=self.available_images,  # Pass pre-generated images
         )
 
-        await self._log_event(
-            "research",
-            step="report_completed",
-            details={"report_length": len(report)},
-        )
+        await self._log_event("research", step="report_completed", details={
+            "report_length": len(report),
+            "images_embedded": len(self.available_images) if has_available_images else 0,
+        })
         return report
 
-    async def write_report_conclusion(
-        self,
-        report_body: str,
-    ) -> str:
+    async def write_report_conclusion(self, report_body: str) -> str:
+        """Write the conclusion section of the report.
+
+        Args:
+            report_body: The main body of the report to conclude.
+
+        Returns:
+            The generated conclusion text.
+        """
         await self._log_event("research", step="writing_conclusion")
         conclusion: str = await self.report_generator.write_report_conclusion(report_body)
         await self._log_event("research", step="conclusion_completed")
         return conclusion
 
     async def write_introduction(self) -> str:
+        """Write the introduction section of the report.
+
+        Returns:
+            The generated introduction text.
+        """
         await self._log_event("research", step="writing_introduction")
         intro: str = await self.report_generator.write_introduction()
         await self._log_event("research", step="introduction_completed")
         return intro
 
-    async def quick_search(
-        self,
-        query: str,
-        query_domains: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        # Use all retrievers as fallbacks
-        return await get_search_results(
-            query,
-            self.retrievers[0],
-            query_domains=query_domains,
-            fallback_retrievers=self.retrievers[1:] if len(self.retrievers) > 1 else None,
-            min_results=1,
+    async def quick_search(self, query: str, query_domains: list[str] = None, aggregated_summary: bool = False) -> list[Any] | str:
+        """Perform a quick search without full research workflow.
+
+        Args:
+            query: The search query.
+            query_domains: Optional list of domains to restrict search to.
+            aggregated_summary: Whether to return an aggregated summary of the search results.
+
+        Returns:
+            List of search results or a synthesized summary string.
+        """
+        search_results = await get_search_results(query, self.retrievers[0], query_domains=query_domains)
+
+        if not aggregated_summary:
+            return search_results
+
+        # Format results for summary
+        context = ""
+        for i, result in enumerate(search_results, 1):
+            context += f"[{i}] {result.get('title', '')}: {result.get('content', '')} ({result.get('url', '')})\n\n"
+
+        prompt = self.prompt_family.generate_quick_summary_prompt(query, context)
+
+        summary = await create_chat_completion(
+            model=self.cfg.smart_llm_model,
+            messages=[{"role": "user", "content": prompt}],
+            llm_provider=self.cfg.smart_llm_provider,
+            max_tokens=self.cfg.smart_token_limit,
+            llm_kwargs=self.cfg.llm_kwargs,
+            cost_callback=self.add_costs
         )
 
-    async def get_subtopics(self) -> list[str]:
+        return summary
+
+    async def get_subtopics(self):
+        """Generate subtopics for the research query.
+
+        Returns:
+            List of generated subtopics.
+        """
         return await self.report_generator.get_subtopics()
 
-    async def get_draft_section_titles(
-        self,
-        current_subtopic: str,
-    ) -> list[str]:
+    async def get_draft_section_titles(self, current_subtopic: str) -> list[str]:
+        """Generate draft section titles for a subtopic.
+
+        Args:
+            current_subtopic: The subtopic to generate sections for.
+
+        Returns:
+            List of section title strings.
+        """
         return await self.report_generator.get_draft_section_titles(current_subtopic)
 
     async def get_similar_written_contents_by_draft_section_titles(
@@ -639,6 +692,17 @@ class GPTResearcher:
         written_contents: list[dict[str, Any]],
         max_results: int = 10,
     ) -> list[str]:
+        """Find similar previously written contents based on section titles.
+
+        Args:
+            current_subtopic: The current subtopic being written.
+            draft_section_titles: List of draft section titles.
+            written_contents: Previously written content to search through.
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of similar content strings.
+        """
         return await self.context_manager.get_similar_written_contents_by_draft_section_titles(
             current_subtopic,
             draft_section_titles,
@@ -647,71 +711,127 @@ class GPTResearcher:
         )
 
     # Utility methods
-    def get_research_images(
-        self,
-        top_k: int = 10,
-    ) -> list[dict[str, Any]]:
+    def get_research_images(self, top_k: int = 10) -> list[dict[str, Any]]:
+        """Get the top research images collected during research.
+
+        Args:
+            top_k: Maximum number of images to return.
+
+        Returns:
+            List of image dictionaries.
+        """
         return self.research_images[:top_k]
 
-    def add_research_images(
-        self,
-        images: list[dict[str, Any]],
-    ) -> None:
+    def add_research_images(self, images: list[dict[str, Any]]) -> None:
+        """Add images to the research image collection.
+
+        Args:
+            images: List of image dictionaries to add.
+        """
         self.research_images.extend(images)
 
     def get_research_sources(self) -> list[dict[str, Any]]:
+        """Get all research sources collected during research.
+
+        Returns:
+            List of source dictionaries containing title, content, and images.
+        """
         return self.research_sources
 
-    def add_research_sources(
-        self,
-        sources: list[dict[str, Any]],
-    ) -> None:
+    def add_research_sources(self, sources: list[dict[str, Any]]) -> None:
+        """Add sources to the research source collection.
+
+        Args:
+            sources: List of source dictionaries to add.
+        """
         self.research_sources.extend(sources)
 
-    def add_references(
-        self,
-        report_markdown: str,
-        visited_urls: set,
-    ) -> str:
+    def add_references(self, report_markdown: str, visited_urls: set) -> str:
+        """Add reference section to a markdown report.
+
+        Args:
+            report_markdown: The markdown report text.
+            visited_urls: Set of URLs to include as references.
+
+        Returns:
+            The report with references appended.
+        """
         return add_references(report_markdown, visited_urls)
 
-    def extract_headers(
-        self,
-        markdown_text: str,
-    ) -> list[dict[str, Any]]:
+    def extract_headers(self, markdown_text: str) -> list[dict]:
+        """Extract headers from markdown text.
+
+        Args:
+            markdown_text: The markdown text to parse.
+
+        Returns:
+            List of header dictionaries.
+        """
         return extract_headers(markdown_text)
 
-    def extract_sections(
-        self,
-        markdown_text: str,
-    ) -> list[dict[str, Any]]:
+    def extract_sections(self, markdown_text: str) -> list[dict]:
+        """Extract sections from markdown text.
+
+        Args:
+            markdown_text: The markdown text to parse.
+
+        Returns:
+            List of section dictionaries.
+        """
         return extract_sections(markdown_text)
 
-    def table_of_contents(
-        self,
-        markdown_text: str,
-    ) -> str:
+    def table_of_contents(self, markdown_text: str) -> str:
+        """Generate a table of contents for markdown text.
+
+        Args:
+            markdown_text: The markdown text to generate TOC for.
+
+        Returns:
+            The table of contents as markdown string.
+        """
         return table_of_contents(markdown_text)
 
-    def get_source_urls(self) -> list[str]:
+    def get_source_urls(self) -> list:
+        """Get all visited source URLs.
+
+        Returns:
+            List of visited URL strings.
+        """
         return list(self.visited_urls)
 
-    def get_research_context(self) -> list[str]:
-        return [] if self.context is None else cast(list[str], self.context)
+    def get_research_context(self) -> list:
+        """Get the accumulated research context.
+
+        Returns:
+            List of context items collected during research.
+        """
+        return self.context
 
     def get_costs(self) -> float:
+        """Get the total accumulated API costs.
+
+        Returns:
+            Total cost in USD.
+        """
         return self.research_costs
 
-    def set_verbose(
-        self,
-        verbose: bool,
-    ) -> None:
+    def set_verbose(self, verbose: bool) -> None:
+        """Set the verbose output mode.
+
+        Args:
+            verbose: Whether to enable verbose output.
+        """
         self.verbose = verbose
 
-    def add_costs(
-        self,
-        cost: float,
-    ) -> None:
+    def add_costs(self, cost: float) -> None:
+        """Add to the accumulated API costs.
+
+        Args:
+            cost: Cost amount to add in USD.
+
+        Raises:
+            ValueError: If cost is not a number.
+        """
         if not isinstance(cost, (float, int)):
             raise ValueError("Cost must be an integer or float")
         self.research_costs += cost

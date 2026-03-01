@@ -361,45 +361,54 @@ async def generate_report(
     custom_prompt: str | None = None,
     headers: dict[str, str] | None = None,
     prompt_family: type[PromptFamily] | PromptFamily = PromptFamily,
-    **kwargs: dict[str, Any],
-) -> str:
-    """Generates the final report.
-
+    available_images: list = None,
+    **kwargs
+):
+    """
+    generates the final report
     Args:
-        query: The research query.
-        context: The context for the report.
-        agent_role_prompt: The role of the agent.
-        report_type: The type of report.
-        tone: The tone of the report.
-        report_source: The source of the report.
-        websocket: The WebSocket connection for streaming output.
-        cfg: The configuration object.
-        main_topic: The main topic of the report.
-        existing_headers: The existing headers of the report.
-        relevant_written_contents: The relevant written contents of the report.
-        cost_callback: The callback for calculating the cost of the report.
-        custom_prompt: A custom prompt for the report.
-        headers: The headers of the report.
-        prompt_family: The family of prompts.
-        **kwargs: Additional keyword arguments.
+        query:
+        context:
+        agent_role_prompt:
+        report_type:
+        websocket:
+        tone:
+        cfg:
+        main_topic:
+        existing_headers:
+        relevant_written_contents:
+        cost_callback:
+        prompt_family: Family of prompts
+        available_images: Pre-generated images to embed in the report
 
     Returns:
         report: The final report.
     """
-    # DEBUG: Log function start and params
-    logger.info(f"[DEBUG] Starting generate_report for query: {query[:50]}...")
-    logger.info(f"[DEBUG] Report type: {report_type}, context length: {len(str(context))}, has custom prompt: {custom_prompt is not None}")
+    available_images = available_images or []
+    generate_prompt = get_prompt_by_report_type(report_type, prompt_family)
+    report = ""
 
-    from gpt_researcher.skills.llm_visualizer import get_llm_visualizer
-    visualizer: LLMInteractionVisualizer = get_llm_visualizer()
-    visualizer.start_interaction("Generate Main Report")
+    if report_type == "subtopic_report":
+        content = f"{generate_prompt(query, existing_headers, relevant_written_contents, main_topic, context, report_format=cfg.report_format, tone=tone, total_words=cfg.total_words, language=cfg.language)}"
+    elif custom_prompt:
+        content = f"{custom_prompt}\n\nContext: {context}"
+    else:
+        content = f"{generate_prompt(query, context, report_source, report_format=cfg.report_format, tone=tone, total_words=cfg.total_words, language=cfg.language)}"
+    
+    # Add available images instruction if images were pre-generated
+    if available_images:
+        images_info = "\n".join([
+            f"- Image {i+1}: ![{img.get('title', img.get('alt_text', 'Illustration'))}]({img['url']}) - {img.get('section_hint', 'General')}"
+            for i, img in enumerate(available_images)
+        ])
+        content += f"""
 
-    existing_headers = [] if existing_headers is None else existing_headers
-    relevant_written_contents = [] if relevant_written_contents is None else relevant_written_contents
-    generate_prompt: Any = get_prompt_by_report_type(report_type, prompt_family)
-    report: str = ""
-    generated_prompt: str = ""
+AVAILABLE IMAGES:
+You have the following pre-generated images available. Embed them in relevant sections of your report using the exact markdown syntax provided:
 
+{images_info}
+
+Place each image on its own line after the relevant section header or paragraph. Use all available images where they add value to the content."""
     try:
         # DEBUG: Log prompt generation
         logger.info(f"[DEBUG] Generating prompt with report_type: {report_type}")

@@ -78,8 +78,14 @@ class EditorAgent:
 
         self._log_parallel_research(queries)
 
-        final_drafts: list[Awaitable[dict[str, Any]]] = [chain.ainvoke(self._create_task_input(research_state, query, title)) for query in queries]
-        research_results: list[dict[str, Any]] = [result["draft"] for result in await asyncio.gather(*final_drafts)]
+        final_drafts = [
+            chain.ainvoke(self._create_task_input(
+                research_state, query, title), config={"tags": ["gpt-researcher"]})
+            for query in queries
+        ]
+        research_results = [
+            result["draft"] for result in await asyncio.gather(*final_drafts)
+        ]
 
         return {"research_data": research_results}
 

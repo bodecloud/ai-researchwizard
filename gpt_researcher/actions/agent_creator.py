@@ -1,16 +1,17 @@
-from __future__ import annotations
+"""Agent creation and selection utilities for GPT Researcher.
+
+This module provides functions to automatically select and configure
+the appropriate research agent based on the query type.
+"""
 
 import json
+import logging
 import re
 
-from typing import Any, Callable
-
 import json_repair
-import logging
 
-from gpt_researcher.config import Config
-from gpt_researcher.prompts import PromptFamily
-from gpt_researcher.utils.llm import create_chat_completion
+from ..prompts import PromptFamily
+from ..utils.llm import create_chat_completion
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +77,26 @@ async def choose_agent(
             **kwargs
         )
 
-    # Split the response to get the agent name and description
+        agent_dict = json.loads(response)
+        return agent_dict["server"], agent_dict["agent_role_prompt"]
+
+    except Exception as e:
+        return await handle_json_error(response)
+
+
+async def handle_json_error(response: str | None):
+    """Handle JSON parsing errors from LLM responses.
+
+    Attempts to recover agent information from malformed JSON responses
+    using json_repair and regex extraction as fallbacks.
+
+    Args:
+        response: The LLM response string that failed initial JSON parsing.
+
+    Returns:
+        A tuple of (agent_name, agent_role_prompt). Returns default agent
+        if all parsing attempts fail.
+    """
     try:
         agent_name: str = ""
         agent_role_prompt: str = ""
@@ -125,17 +145,19 @@ async def handle_json_error(response: str | None) -> tuple[str, str]:
 
 
 def extract_json_with_regex(response: str | None) -> str | None:
-    """Extract JSON with regex from the response.
+    """Extract JSON object from a string using regex.
+
+    Attempts to find the first JSON object pattern in the response string.
 
     Args:
-        response (str | None): The response to extract JSON from.
+        response: The string to search for JSON content.
 
     Returns:
-        str | None: The extracted JSON.
+        The extracted JSON string if found, None otherwise.
     """
-    if response is None:
+    if not response:
         return None
-    json_match: re.Match[str] | None = re.search(r"{.*?}", response, re.DOTALL)
-    if json_match is not None:
+    json_match = re.search(r"{.*?}", response, re.DOTALL)
+    if json_match:
         return json_match.group(0)
     return None
