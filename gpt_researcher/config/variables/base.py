@@ -39,6 +39,7 @@ class BaseConfig(TypedDict):
     PROMPT_FAMILY: str
     LLM_KWARGS: dict
     EMBEDDING_KWARGS: dict
+    VERBOSE: bool
     DEEP_RESEARCH_CONCURRENCY: int
     DEEP_RESEARCH_DEPTH: int
     DEEP_RESEARCH_BREADTH: int
@@ -48,7 +49,8 @@ class BaseConfig(TypedDict):
     MCP_ALLOWED_ROOT_PATHS: list[str]
     MCP_STRATEGY: str
     REASONING_EFFORT: str
-    ENABLE_RAG_REPORT_GENERATION: bool
-    RAG_CHUNK_SIZE: int
-    RAG_CHUNK_OVERLAP: int
-    RAG_MAX_CHUNKS_PER_SECTION: int
+    # Image generation settings
+    IMAGE_GENERATION_MODEL: Union[str, None]
+    IMAGE_GENERATION_MAX_IMAGES: int
+    IMAGE_GENERATION_ENABLED: bool
+    IMAGE_GENERATION_STYLE: str  # Image style: "dark", "light", or "auto"

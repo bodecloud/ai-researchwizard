@@ -1,55 +1,49 @@
-from __future__ import annotations
+"""Context manager skill for GPT Researcher.
+
+This module provides the ContextManager class that handles context
+retrieval, compression, and similarity matching for research queries.
+"""
 
 import asyncio
-import logging
+from typing import Dict, List, Optional, Set
 
-from typing import TYPE_CHECKING, Any
-
-from gpt_researcher.actions.utils import stream_output
-from gpt_researcher.context.compression import ContextCompressor, VectorstoreCompressor, WrittenContentCompressor
-from gpt_researcher.utils.schemas import Subtopic
-
-if TYPE_CHECKING:
-    from gpt_researcher.agent import GPTResearcher
+from ..actions.utils import stream_output
+from ..context.compression import (
+    ContextCompressor,
+    VectorstoreCompressor,
+    WrittenContentCompressor,
+)
 
 
 class ContextManager:
-    """Manages context for the researcher agent."""
+    """Manages context retrieval and compression for research.
 
-    def __init__(self, researcher: GPTResearcher):
-        self.researcher: GPTResearcher = researcher
+    This class handles finding similar content based on queries,
+    managing context from various sources, and compressing content
+    for efficient processing.
 
-    async def get_similar_content_by_query(
-        self,
-        query: Any,
-        pages: list[dict[str, Any]],
-    ) -> str:
-        actual_query_text: str
-        if isinstance(query, Subtopic):
-            actual_query_text = query.task
-        elif isinstance(query, tuple):
-            if query and isinstance(query[0], str) and query[0] == "subtopics":
-                if len(query) > 1 and isinstance(query[1], list) and query[1] and isinstance(query[1][0], Subtopic):
-                    actual_query_text = query[1][0].task
-                    if len(query[1]) > 1:
-                        logging.warning(
-                            f"Query to get_similar_content_by_query was a tuple {query} containing multiple subtopics. Using task from the first subtopic only: '{actual_query_text}'."
-                        )
-                else:
-                    logging.warning(f"Query to get_similar_content_by_query was an unexpected 'subtopics' tuple structure: {query}. Falling back to string conversion.")
-                    actual_query_text = str(query)
+    Attributes:
+        researcher: The parent GPTResearcher instance.
+    """
 
-            elif query and isinstance(query[0], Subtopic):
-                actual_query_text = query[0].task
-            else:
-                logging.warning(f"Query to get_similar_content_by_query was an unexpected tuple: {query}. Falling back to string conversion.")
-                actual_query_text = str(query)
-        elif isinstance(query, str):
-            actual_query_text = query
-        else:
-            logging.warning(f"Query to get_similar_content_by_query was of unexpected type {type(query)}: {query}. Falling back to string conversion.")
-            actual_query_text = str(query)
+    def __init__(self, researcher):
+        """Initialize the ContextManager.
 
+        Args:
+            researcher: The GPTResearcher instance that owns this manager.
+        """
+        self.researcher = researcher
+
+    async def get_similar_content_by_query(self, query: str, pages: list) -> str:
+        """Get similar content from pages based on the query.
+
+        Args:
+            query: The search query to find similar content for.
+            pages: List of page content to search through.
+
+        Returns:
+            Compressed context string of relevant content.
+        """
         if self.researcher.verbose:
             await stream_output(
                 "logs",
@@ -70,11 +64,16 @@ class ContextManager:
             cost_callback=self.researcher.add_costs,
         )
 
-    async def get_similar_content_by_query_with_vectorstore(
-        self,
-        query: str,
-        filter: dict[str, Any],
-    ) -> str:
+    async def get_similar_content_by_query_with_vectorstore(self, query: str, filter: dict | None) -> str:
+        """Get similar content from vectorstore based on the query.
+
+        Args:
+            query: The search query to find similar content for.
+            filter: Optional filter dictionary for vectorstore queries.
+
+        Returns:
+            Compressed context string of relevant content from vectorstore.
+        """
         if self.researcher.verbose:
             await stream_output(
                 "logs",
@@ -93,11 +92,25 @@ class ContextManager:
     async def get_similar_written_contents_by_draft_section_titles(
         self,
         current_subtopic: str,
-        draft_section_titles: list[str],
-        written_contents: list[dict[str, Any]],
-        max_results: int = 10,
-    ) -> list[str]:
-        all_queries: list[str] = [current_subtopic] + draft_section_titles
+        draft_section_titles: List[str],
+        written_contents: List[Dict],
+        max_results: int = 10
+    ) -> List[str]:
+        """Get similar written contents based on draft section titles.
+
+        Searches for relevant previously written content that matches
+        the current subtopic and draft section titles.
+
+        Args:
+            current_subtopic: The current subtopic being written.
+            draft_section_titles: List of draft section title strings.
+            written_contents: List of previously written content dictionaries.
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of relevant written content strings.
+        """
+        all_queries = [current_subtopic] + draft_section_titles
 
         async def process_query(query: str) -> set[str]:
             return set(await self.__get_similar_written_contents_by_query(query, written_contents, **self.researcher.kwargs))
@@ -115,10 +128,21 @@ class ContextManager:
     async def __get_similar_written_contents_by_query(
         self,
         query: str,
-        written_contents: list[dict[str, Any]],
+        written_contents: List[Dict],
         similarity_threshold: float = 0.5,
-        max_results: int = 10,
-    ) -> list[str]:
+        max_results: int = 10
+    ) -> List[str]:
+        """Get similar written contents for a single query.
+
+        Args:
+            query: The query to find similar content for.
+            written_contents: List of written content dictionaries.
+            similarity_threshold: Minimum similarity score threshold.
+            max_results: Maximum number of results to return.
+
+        Returns:
+            List of similar written content strings.
+        """
         if self.researcher.verbose:
             await stream_output(
                 "logs",

@@ -1,19 +1,34 @@
-from __future__ import annotations
+"""Retriever factory and utilities for GPT Researcher.
 
-import os
+This module provides functions to instantiate and manage various
+search retriever implementations.
+"""
 
-from gpt_researcher.config import Config
-from gpt_researcher.retrievers.retriever_abc import RetrieverABC
 
-
-def get_retriever(retriever: str) -> type[RetrieverABC] | None:
-    """Gets the retriever.
+def get_retriever(retriever: str):
+    """Get a retriever class by name.
 
     Args:
-        retriever (str): retriever name
+        retriever: The name of the retriever to get (e.g., 'google', 'tavily', 'duckduckgo').
 
     Returns:
-        retriever: Retriever class
+        The retriever class if found, None otherwise.
+
+    Supported retrievers:
+        - google: Google Custom Search
+        - searx: SearX search engine
+        - searchapi: SearchAPI service
+        - serpapi: SerpAPI service
+        - serper: Serper API
+        - duckduckgo: DuckDuckGo search
+        - bing: Bing search
+        - arxiv: arXiv academic search
+        - tavily: Tavily search API
+        - exa: Exa search
+        - semantic_scholar: Semantic Scholar academic search
+        - pubmed_central: PubMed Central medical literature
+        - custom: Custom user-defined retriever
+        - mcp: Model Context Protocol retriever
     """
     match retriever:
         case "google":
@@ -182,7 +197,12 @@ def get_retrievers(headers: dict[str, str], cfg: Config) -> list[type[RetrieverA
     return retriever_classes
 
 
-def get_default_retriever() -> type[RetrieverABC]:
+def get_default_retriever():
+    """Get the default retriever class.
+
+    Returns:
+        The TavilySearch retriever class as the default search provider.
+    """
     from gpt_researcher.retrievers import TavilySearch
 
     return TavilySearch

@@ -1,9 +1,17 @@
-import asyncio
-from colorama import Fore, init
+"""Web scraper module for GPT Researcher.
 
-import importlib.util
+This module provides the Scraper class that extracts content from URLs
+using various scraping backends (BeautifulSoup, PyMuPDF, Browser, etc.).
+"""
+
+import asyncio
+import importlib
+import logging
 import subprocess
 import sys
+
+import requests
+from colorama import Fore, init
 
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
@@ -17,6 +25,8 @@ from gpt_researcher.scraper import (
     ArxivScraper,
     BeautifulSoupScraper,
     BrowserScraper,
+    FireCrawl,
+    NoDriverScraper,
     PyMuPDFScraper,
     TavilyExtract,
     WebBaseLoaderScraper,

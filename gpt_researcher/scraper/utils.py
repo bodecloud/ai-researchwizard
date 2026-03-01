@@ -1,13 +1,17 @@
-from __future__ import annotations
+"""Utility functions for web scraping.
+
+This module provides helper functions for extracting content, images,
+and processing HTML from web pages.
+"""
 
 import hashlib
 import logging
 import re
-
-from typing import Any
-from urllib.parse import ParseResult, parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import bs4
+from bs4 import BeautifulSoup
+
 
 from bs4 import BeautifulSoup
 
