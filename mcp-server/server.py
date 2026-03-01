@@ -16,6 +16,18 @@ from mcp.server.fastmcp import FastMCP
 
 from gpt_researcher import GPTResearcher
 
+# Resolve Docker secrets (_FILE env vars) before loading .env
+try:
+    from gpt_researcher.utils.docker_secrets import resolve_docker_secrets
+except ModuleNotFoundError:
+    def resolve_docker_secrets(verbose: bool = False) -> None:
+        if verbose:
+            logging.getLogger(__name__).warning(
+                "docker_secrets helper not available; skipping *_FILE resolution."
+            )
+
+resolve_docker_secrets(verbose=True)
+
 # Load environment variables
 load_dotenv()
 
@@ -280,10 +292,23 @@ def research_query(
 
 def run_server():
     """Run the MCP server using FastMCP's built-in event loop handling."""
-    # Check if API keys are set
-    if not os.getenv("OPENAI_API_KEY"):
-        logger.error("OPENAI_API_KEY not found. Please set it in your .env file.")
-        return
+    # Warn if no LLM API keys are detected (non-fatal - user may configure later or use auto-fallbacks)
+    _any_llm_key = any(
+        os.getenv(k)
+        for k in (
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY",
+            "DEEPSEEK_API_KEY", "GROQ_API_KEY", "MISTRAL_API_KEY",
+            "OPENROUTER_API_KEY", "OLLAMA_BASE_URL",
+        )
+    )
+    if not _any_llm_key:
+        logger.warning(
+            "No LLM API key detected (checked OPENAI_API_KEY, ANTHROPIC_API_KEY, "
+            "GEMINI_API_KEY, DEEPSEEK_API_KEY, GROQ_API_KEY, MISTRAL_API_KEY, "
+            "OPENROUTER_API_KEY, OLLAMA_BASE_URL). "
+            "The server will start, but research requests will fail until at least one "
+            "LLM provider is configured."
+        )
 
     # Add startup message
     logger.info("Starting GPT Researcher MCP Server...")
