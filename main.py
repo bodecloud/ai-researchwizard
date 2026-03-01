@@ -6,6 +6,10 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
+# Resolve Docker secrets (_FILE env vars) before anything reads config
+from gpt_researcher.utils.docker_secrets import resolve_docker_secrets
+resolve_docker_secrets(verbose=True)
+
 from dotenv import load_dotenv
 
 # Create logs directory if it doesn't exist

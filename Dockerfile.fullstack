@@ -6,16 +6,16 @@ WORKDIR /app/frontend/nextjs
 
 # Copy package files and install dependencies
 COPY frontend/nextjs/package.json frontend/nextjs/package-lock.json* ./
-RUN npm ci > /dev/null 2>&1 || (echo "npm ci failed, trying npm install" && npm install --legacy-peer-deps && npm ci)
+RUN npm ci --legacy-peer-deps > /dev/null 2>&1 || (echo "npm ci failed, trying npm install" && npm install --legacy-peer-deps)
 
 # Copy the rest of the frontend application and build it
 COPY frontend/nextjs/ ./
-RUN npm run build
+RUN npm run build -- --webpack
 
 ########################################################################
 # Stage 2: Browser and backend build tools installation
 ########################################################################
-FROM python:3.14-slim-trixie AS install-browser
+FROM python:3.12-slim-trixie AS install-browser
 
 # Install Chromium, Chromedriver, Firefox, Geckodriver, and build tools in one layer
 RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries \
@@ -36,7 +36,7 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries \
   && apt-get update \
   && apt-get install -y google-chrome-stable; \
   fi \
-  && apt-get install -y --no-install-recommends firefox-esr git build-essential \
+  && apt-get install -y --no-install-recommends firefox-esr git build-essential libxml2-dev libxslt1-dev zlib1g-dev \
   && GECKO_ARCH=$(case ${ARCH} in amd64) echo "linux64" ;; arm64) echo "linux-aarch64" ;; *) echo "linux64" ;; esac) \
   && wget https://github.com/mozilla/geckodriver/releases/download/v0.36.0/geckodriver-v0.36.0-${GECKO_ARCH}.tar.gz \
   && tar -xvzf geckodriver-v0.36.0-${GECKO_ARCH}.tar.gz \
@@ -60,10 +60,16 @@ COPY ./multi_agents/requirements.txt ./multi_agents/requirements.txt
 RUN pip config set global.timeout 60 && \
   pip config set global.retries 3 && \
   pip install --upgrade pip && \
-  pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary && \
-  pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary && \
-  git clone https://github.com/assafelovic/gptr-mcp && \
-  pip install --no-cache-dir -r gptr-mcp/requirements.txt --upgrade --prefer-binary
+  pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt --prefer-binary && \
+  pip install --no-cache-dir --use-deprecated=legacy-resolver -r multi_agents/requirements.txt --prefer-binary
+
+# Clone gptr-mcp from upstream; fall back to local copy if unavailable
+COPY ./gptr-mcp ./gptr-mcp.local
+RUN git clone https://github.com/assafelovic/gptr-mcp 2>/dev/null \
+  || { echo "Upstream clone failed, using local gptr-mcp"; cp -a ./gptr-mcp.local ./gptr-mcp; } && \
+  cp -a ./gptr-mcp.local/server.py ./gptr-mcp/server.py && \
+  rm -rf ./gptr-mcp.local && \
+  pip install --no-cache-dir --use-deprecated=legacy-resolver -r gptr-mcp/requirements.txt --prefer-binary
 
 ########################################################################
 # Stage 4: Final image with backend, frontend

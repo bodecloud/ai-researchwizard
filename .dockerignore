@@ -141,6 +141,7 @@ comprehensive_test.py
 
 # MCP server (if not needed in production)
 mcp-server/
+gptr-mcp/.git
 
 # Miscellaneous
 *.bak
