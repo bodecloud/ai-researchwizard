@@ -22,9 +22,7 @@ try:
 except ModuleNotFoundError:
     def resolve_docker_secrets(verbose: bool = False) -> None:
         if verbose:
-            logging.getLogger(__name__).warning(
-                "docker_secrets helper not available; skipping *_FILE resolution."
-            )
+            logging.getLogger(__name__).warning("docker_secrets helper not available; skipping *_FILE resolution.")
 
 resolve_docker_secrets(verbose=True)
 
@@ -64,9 +62,11 @@ async def research_resource(topic: str) -> str:
     This allows LLMs to access web-sourced information without explicit function calls.
 
     Args:
+    ----
         topic: The research topic or query
 
     Returns:
+    -------
         String containing the research context with source information
     """
     # Check if we've already researched this topic
@@ -105,9 +105,11 @@ async def deep_research(query: str) -> dict[str, Any]:
     """Conduct a deep web research on a given query using GPT Researcher.
 
     Args:
+    ----
         query: The research query or topic
 
     Returns:
+    -------
         Dict containing research status, ID, and the actual research context and sources
         that can be used directly by LLMs for context enrichment
 
@@ -152,10 +154,12 @@ async def write_report(
     """Generate a report based on previously conducted research.
 
     Args:
+    ----
         query (str): The research query or topic
         custom_prompt (str | None): Optional custom prompt for report generation
 
     Returns:
+    -------
         dict[str, Any] containing the report content and metadata
     """
     # Generate a unique ID for this research session
@@ -202,10 +206,12 @@ async def write_report(
     """Generate a report based on previously conducted research.
 
     Args:
+    ----
         research_id: The ID of the research session from conduct_research
         custom_prompt: Optional custom prompt for report generation
 
     Returns:
+    -------
         dict[str, Any] containing the report content and metadata
     """
     success, researcher, error = get_researcher_by_id(mcp.researchers, research_id)
@@ -236,9 +242,11 @@ async def get_research_sources(research_id: str) -> dict[str, Any]:
     """Get the sources used in the research.
 
     Args:
+    ----
         research_id: The ID of the research session
 
     Returns:
+    -------
         Dict containing the research sources
     """
     success, researcher, error = get_researcher_by_id(mcp.researchers, research_id)
@@ -249,7 +257,8 @@ async def get_research_sources(research_id: str) -> dict[str, Any]:
     source_urls: list[str] = researcher.get_source_urls()
 
     return create_success_response(
-        {"sources": format_sources_for_response(sources), "source_urls": source_urls}
+        {"sources": format_sources_for_response(sources),
+        "source_urls": source_urls},
     )
 
 
@@ -258,9 +267,11 @@ async def get_research_context(research_id: str) -> dict[str, Any]:
     """Get the full context of the research.
 
     Args:
+    ----
         research_id (str): The ID of the research session
 
     Returns:
+    -------
         dict[str, Any] containing the research context
     """
     success, researcher, error = get_researcher_by_id(mcp.researchers, research_id)
@@ -281,10 +292,13 @@ def research_query(
     """Create a research query prompt for GPT Researcher.
 
     Args:
+    ----
         topic: The topic to research
         goal: The goal or specific question to answer
         report_format: The format of the report to generate
+
     Returns:
+    -------
         A formatted prompt for research
     """
     return create_research_prompt(topic, goal, report_format)
@@ -312,9 +326,7 @@ def run_server():
 
     # Add startup message
     logger.info("Starting GPT Researcher MCP Server...")
-    print(
-        "🚀 GPT Researcher MCP Server starting... Check researcher_mcp_server.log for details"
-    )  # noqa: E501 # pylint: disable=line-too-long
+    print("🚀 GPT Researcher MCP Server starting... Check researcher_mcp_server.log for details")  # noqa: E501 # pylint: disable=line-too-long
 
     # Let FastMCP handle the event loop
     try:
@@ -322,8 +334,8 @@ def run_server():
         # Note: If we reach here, the server has stopped
         logger.info("MCP Server has stopped")
     except Exception as e:
-        logger.error(f"Error running MCP server: {str(e)}")
-        print(f"❌ MCP Server error: {str(e)}")
+        logger.error(f"Error running MCP server: {e.__class__.__name__}: {e}")
+        print(f"❌ MCP Server error: {e.__class__.__name__}: {e}")
         return
     print("✅ MCP Server stopped")
 
