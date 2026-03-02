@@ -8,7 +8,8 @@ retrievers, and various operational parameters.
 import json
 import os
 import warnings
-from typing import Any, Dict, List, Type, Union, get_args, get_origin
+from datetime import timedelta
+from typing import Any, ClassVar, Dict, List, Self, Type, Union, get_args, get_origin
 
 # Import fallback logic from the new module
 from gpt_researcher.config.fallback_logic import set_llm_attributes
@@ -35,7 +36,7 @@ class Config:
     """
 
     CONFIG_DIR: ClassVar[str] = os.path.join(os.path.dirname(__file__), "variables")
-    DefaultConfig: ClassVar[Self] | None = None
+    DefaultConfig: ClassVar[Self | None] = None
 
     def __init__(self, config_path: str | None = None):
         """Initialize the config class.
@@ -91,6 +92,11 @@ class Config:
             if env_value is not None:
                 value = self.convert_env_value(key, env_value, BaseConfig.__annotations__[key])
             setattr(self, key.lower(), value)
+
+    @property
+    def smart_llm(self) -> str | None:
+        """Get the smart LLM configuration."""
+        return getattr(self, '_smart_llm', None)
 
     @smart_llm.setter
     def smart_llm(self, value: str) -> None:

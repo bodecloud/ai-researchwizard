@@ -36,11 +36,16 @@ const GPTResearcher = (() => {
     }, 1000);
 
     // Setup form submission
-    document.getElementById('researchForm').addEventListener('submit', (e) => {
-      e.preventDefault();
-      startResearch();
-      return false;
-    });
+    const researchForm = document.getElementById('researchForm');
+    if (researchForm) {
+      researchForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        startResearch();
+        return false;
+      });
+    } else {
+      console.error('researchForm not found; preventing native form POST is unavailable');
+    }
 
     document
       .getElementById('copyToClipboard')
@@ -2592,4 +2597,5 @@ const GPTResearcher = (() => {
   }
 })()
 
+window.GPTResearcher = GPTResearcher
 window.addEventListener('DOMContentLoaded', GPTResearcher.init)

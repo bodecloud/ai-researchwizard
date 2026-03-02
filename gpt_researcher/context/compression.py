@@ -64,10 +64,7 @@ from gpt_researcher.utils.costs import estimate_embedding_cost
 from gpt_researcher.vector_store import VectorStoreWrapper
 
 if TYPE_CHECKING:
-    try:
-        from langchain_core.documents.base import Document
-    except ModuleNotFoundError:
-        from langchain.schema import Document
+    from langchain_core.documents import Document
 
 logger = logging.getLogger(__name__)
 

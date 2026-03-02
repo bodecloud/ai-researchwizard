@@ -68,5 +68,5 @@ WORKDIR /usr/src/app
 # Copy the rest of the application files with proper ownership
 COPY --chown=gpt-researcher:gpt-researcher ./ ./
 
-# Use shell form for CMD to enable environment variable substitution
-CMD uvicorn main:app --host $HOST --port $PORT --workers $WORKERS
+# Use JSON form for proper signal handling while enabling environment variable substitution
+CMD ["sh", "-c", "uvicorn main:app --host $HOST --port $PORT --workers $WORKERS"]
