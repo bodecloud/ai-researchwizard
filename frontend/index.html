@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <title>ResearchWizard | Powered by th3w1zard1</title>
-    <meta name="description" content="Your intelligent research assistant">
+    <meta name="description" content="Your AI-powered research assistant">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="./static/new/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,6 +13,23 @@
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="/frontend/styles.css">
+    <script data-cfasync="false">
+        (function preventTailwindCdnInjection() {
+            const removeTailwindCdnScripts = () => {
+                document.querySelectorAll('script[src*="cdn.tailwindcss.com"]').forEach((scriptEl) => {
+                    scriptEl.remove();
+                });
+            };
+
+            removeTailwindCdnScripts();
+
+            const observer = new MutationObserver(() => {
+                removeTailwindCdnScripts();
+            });
+
+            observer.observe(document.documentElement, { childList: true, subtree: true });
+        })();
+    </script>
 </head>
 
 <body>
@@ -103,7 +120,7 @@
 
     <main class="container" id="form">
         <div class="agent-item"><img src="/static/new/wizard-logo.svg" class="avatar" alt="Research Wizard"></div>
-        <form method="POST" class="mt-3" id="researchForm">
+        <form method="POST" class="mt-3" id="researchForm" onsubmit="event.preventDefault(); window.GPTResearcher?.startResearch?.(); return false;">
             <div class="form-group">
                 <label for="task" class="agent-question">What would you like me to research for you?</label>
                 <div class="autocomplete-container">

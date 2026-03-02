@@ -4,6 +4,9 @@ This module provides functions to instantiate and manage various
 search retriever implementations.
 """
 
+from gpt_researcher.config import Config
+from gpt_researcher.retrievers.retriever_abc import RetrieverABC
+
 
 def get_retriever(retriever: str):
     """Get a retriever class by name.

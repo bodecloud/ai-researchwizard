@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 import pytesseract
 
-from langchain.schema import Document
+from langchain_core.documents import Document
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError, sync_playwright
 
 from gpt_researcher.utils.logger import get_formatted_logger

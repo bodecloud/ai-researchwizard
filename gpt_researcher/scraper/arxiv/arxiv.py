@@ -3,7 +3,7 @@ from __future__ import annotations
 import arxiv
 import requests
 
-from langchain.schema import Document
+from langchain_core.documents import Document
 from langchain_community.retrievers import ArxivRetriever
 
 
