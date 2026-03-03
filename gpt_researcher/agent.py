@@ -4,9 +4,11 @@ This module provides the main GPTResearcher class that orchestrates
 autonomous research and report generation using LLMs and web search.
 """
 
+from __future__ import annotations
+
 import json
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .actions import (
     add_references,

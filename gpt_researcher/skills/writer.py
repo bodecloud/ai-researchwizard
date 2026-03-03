@@ -5,7 +5,7 @@ writing, including introductions, conclusions, and subtopic management.
 """
 
 import json
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ..actions import (
     generate_draft_section_titles,

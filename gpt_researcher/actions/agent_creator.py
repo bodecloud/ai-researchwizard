@@ -7,9 +7,11 @@ the appropriate research agent based on the query type.
 import json
 import logging
 import re
+from typing import Any, Callable
 
 import json_repair
 
+from ..config import Config
 from ..prompts import PromptFamily
 from ..utils.llm import create_chat_completion
 
@@ -41,7 +43,7 @@ async def choose_agent(
     """
     parent_query = "" if parent_query is None else parent_query
     query = f"{parent_query} - {query}" if parent_query else f"{query}"
-    response = None  # Initialize response to ensure it's defined
+    response: str | None = None
 
     try:
         response = await create_chat_completion(
@@ -55,11 +57,10 @@ async def choose_agent(
             llm_kwargs=cfg.llm_kwargs,
             cost_callback=cost_callback,
             cfg=cfg,
+            **kwargs,
         )
     except Exception as e:
-        # Handle fallback for strategic LLM
         print(f"Error with strategic LLM, falling back to smart LLM: {e.__class__.__name__}: {e}")
-        # Log to stderr
         import sys
 
         sys.stderr.write(f"Error with strategic LLM, falling back to smart LLM: {e.__class__.__name__}: {e}\n")
@@ -77,38 +78,11 @@ async def choose_agent(
             **kwargs
         )
 
+    try:
         agent_dict = json.loads(response)
         return agent_dict["server"], agent_dict["agent_role_prompt"]
-
-    except Exception as e:
-        return await handle_json_error(response)
-
-
-async def handle_json_error(response: str | None):
-    """Handle JSON parsing errors from LLM responses.
-
-    Attempts to recover agent information from malformed JSON responses
-    using json_repair and regex extraction as fallbacks.
-
-    Args:
-        response: The LLM response string that failed initial JSON parsing.
-
-    Returns:
-        A tuple of (agent_name, agent_role_prompt). Returns default agent
-        if all parsing attempts fail.
-    """
-    try:
-        agent_name: str = ""
-        agent_role_prompt: str = ""
-        parts: list[str] = response.strip().split("AGENT ROLE:")
-        if len(parts) >= 2:
-            agent_name = parts[0].strip().replace("AGENT NAME:", "").strip()
-            agent_role_prompt = parts[1].strip()
     except Exception:
-        # Return default values
-        return "Research Agent", "You are a helpful research agent."
-    else:
-        return agent_name, agent_role_prompt
+        return await handle_json_error(response)
 
 
 async def handle_json_error(response: str | None) -> tuple[str, str]:

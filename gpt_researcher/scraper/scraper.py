@@ -6,31 +6,22 @@ using various scraping backends (BeautifulSoup, PyMuPDF, Browser, etc.).
 
 import asyncio
 import importlib
-import logging
 import subprocess
 import sys
-
-import requests
-from colorama import Fore, init
 
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
 from typing import Any, Callable
 
 import requests
-
 from colorama import Fore, init
 
-from gpt_researcher.scraper import (
-    ArxivScraper,
-    BeautifulSoupScraper,
-    BrowserScraper,
-    FireCrawl,
-    NoDriverScraper,
-    PyMuPDFScraper,
-    TavilyExtract,
-    WebBaseLoaderScraper,
-)
+from .arxiv.arxiv import ArxivScraper
+from .beautiful_soup.beautiful_soup import BeautifulSoupScraper
+from .browser.browser import BrowserScraper
+from .pymupdf.pymupdf import PyMuPDFScraper
+from .tavily_extract.tavily_extract import TavilyExtract
+from .web_base_loader.web_base_loader import WebBaseLoaderScraper
 from gpt_researcher.scraper.scraper_abc import BaseScraperABC
 
 
