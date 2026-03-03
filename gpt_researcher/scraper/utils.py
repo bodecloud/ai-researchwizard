@@ -7,12 +7,10 @@ and processing HTML from web pages.
 import hashlib
 import logging
 import re
-from urllib.parse import parse_qs, urljoin, urlparse
+from typing import Any
+from urllib.parse import ParseResult, parse_qs, urljoin, urlparse
 
 import bs4
-from bs4 import BeautifulSoup
-
-
 from bs4 import BeautifulSoup
 
 

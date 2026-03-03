@@ -15,8 +15,9 @@ Classes:
 """
 
 import asyncio
+import logging
 import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from langchain_classic.retrievers import ContextualCompressionRetriever
 from langchain_classic.retrievers.document_compressors import (
@@ -30,38 +31,6 @@ from ..prompts import PromptFamily
 from ..utils.costs import estimate_embedding_cost
 from ..vector_store import VectorStoreWrapper
 from .retriever import SearchAPIRetriever, SectionRetriever
-
-import asyncio
-import logging
-import os
-from typing import TYPE_CHECKING, Any, Callable
-
-try:
-    from langchain.retrievers import ContextualCompressionRetriever
-    from langchain.retrievers.document_compressors.base import DocumentCompressorPipeline
-    from langchain.retrievers.document_compressors.embeddings_filter import EmbeddingsFilter
-except ImportError:
-    # Try alternative imports for different LangChain versions
-    try:
-        from langchain_community.retrievers import ContextualCompressionRetriever
-        from langchain_community.retrievers.document_compressors.base import DocumentCompressorPipeline
-        from langchain_community.retrievers.document_compressors.embeddings_filter import EmbeddingsFilter
-    except ImportError:
-        # Fallback for older versions
-        from langchain.retrievers.document_compressors import ContextualCompressionRetriever
-        from langchain.retrievers.document_compressors.base import DocumentCompressorPipeline
-        from langchain.retrievers.document_compressors.embeddings_filter import EmbeddingsFilter
-
-try:
-    from langchain.text_splitter import RecursiveCharacterTextSplitter
-except ImportError:
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-from gpt_researcher.context.retriever import SearchAPIRetriever, SectionRetriever
-from gpt_researcher.memory.embeddings import OPENAI_EMBEDDING_MODEL
-from gpt_researcher.prompts import PromptFamily
-from gpt_researcher.utils.costs import estimate_embedding_cost
-from gpt_researcher.vector_store import VectorStoreWrapper
 
 if TYPE_CHECKING:
     from langchain_core.documents import Document

@@ -36,9 +36,9 @@ WORKDIR /usr/src/app
 COPY ./requirements.txt ./requirements.txt
 COPY ./multi_agents/requirements.txt ./multi_agents/requirements.txt
 
-RUN pip install --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt --upgrade --prefer-binary && \
-    pip install --no-cache-dir -r multi_agents/requirements.txt --upgrade --prefer-binary
+RUN python -m pip install --no-cache-dir "pip<26" && \
+    pip install --no-cache-dir --use-deprecated=legacy-resolver --prefer-binary -r requirements.txt && \
+    pip install --no-cache-dir --use-deprecated=legacy-resolver --prefer-binary -r multi_agents/requirements.txt
 
 # Stage 3: Final stage with non-root user and app
 FROM gpt-researcher-install AS gpt-researcher
