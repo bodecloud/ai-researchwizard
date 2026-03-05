@@ -17,7 +17,12 @@ A Python venv is located at `/workspace/.venv` and is auto-activated via `~/.bas
 
 ### API keys
 
-The backend and research agent require `OPENAI_API_KEY` and `TAVILY_API_KEY` environment variables (set in `.env` at the repo root) to conduct actual research. Without these keys the UI loads and the API responds, but research queries will fail.
+The backend and research agent require `OPENAI_API_KEY` and `TAVILY_API_KEY` environment variables (set in `.env` at the repo root) to conduct actual research. Without these keys the UI loads, the API responds, and WebSocket connections succeed, but research queries will hang at "Processing..." because the LLM/search calls fail silently.
+
+### Known pre-existing bugs
+
+- `get_all_retriever_names` is used in `gpt_researcher/config/config.py` but never imported — this causes a `NameError` at runtime when the WebSocket research flow initializes the config. This blocks research even if API keys are set.
+- `_log_config_section` is similarly undefined in the Config class, causing test failures in `test_comprehensive_pytest.py`.
 
 ### Linting
 
