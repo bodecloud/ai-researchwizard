@@ -23,6 +23,7 @@ The backend and research agent require `OPENAI_API_KEY` and `TAVILY_API_KEY` env
 
 - `get_all_retriever_names` is used in `gpt_researcher/config/config.py` but never imported — this causes a `NameError` at runtime when the WebSocket research flow initializes the config. This blocks research even if API keys are set.
 - `_log_config_section` is similarly undefined in the Config class, causing test failures in `test_comprehensive_pytest.py`.
+- The Next.js frontend's WebSocket connection triggers a React error overlay (`fullHost.includes is not a function` from `socket.io-client`) when submitting a research query. The backend uses raw WebSocket at `/ws`, not socket.io, so the connection does succeed initially (the "AGENT WORK" / "Processing..." state appears) but the socket.io client subsequently errors.
 
 ### Linting
 
