@@ -4,6 +4,8 @@ This module provides functions to instantiate and manage various
 search retriever implementations.
 """
 
+import os
+
 from gpt_researcher.config import Config
 from gpt_researcher.retrievers.retriever_abc import RetrieverABC
 
@@ -62,6 +64,10 @@ def get_retriever(retriever: str):
             from gpt_researcher.retrievers import BingSearch
 
             return BingSearch
+        case "bocha":
+            from gpt_researcher.retrievers import BoChaSearch
+
+            return BoChaSearch
         case "arxiv":
             from gpt_researcher.retrievers import ArxivSearch
 
@@ -160,7 +166,7 @@ def get_retrievers(headers: dict[str, str], cfg: Config) -> list[type[RetrieverA
             retrievers = cfg.retrievers
         # Strip whitespace from each retriever name
         retrievers = [r.strip() for r in retrievers]
-        primary_retrievers = cfg.retrievers
+        primary_retrievers = retrievers
     # If not found, check config for a single retriever
     elif hasattr(cfg, "retriever") and getattr(cfg, "retriever", None):
         primary_retrievers = [getattr(cfg, "retriever")]
