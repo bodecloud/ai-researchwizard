@@ -59,6 +59,7 @@ async def write_report(
         query_domains=[],
         config_path="",
         return_researcher=True,
+        custom_prompt=research_request.custom_prompt or "",
     )
 
     docx_path: str = await write_md_to_word(report_information[0], research_id)

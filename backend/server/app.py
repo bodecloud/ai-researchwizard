@@ -62,6 +62,7 @@ class ResearchRequest(BaseModel):
     query_domains: List[str] = Field(default_factory=list)
     repo_name: str | None = None
     branch_name: str | None = None
+    custom_prompt: str | None = None
     mcp_enabled: bool = False
     mcp_strategy: str = "fast"
     mcp_configs: List[Dict[str, Any]] = Field(default_factory=list)
@@ -307,6 +308,7 @@ async def write_report(research_request: ResearchRequest, research_id: str = Non
         mcp_enabled=research_request.mcp_enabled,
         mcp_strategy=research_request.mcp_strategy,
         mcp_configs=research_request.mcp_configs,
+        custom_prompt=research_request.custom_prompt or "",
     )
 
     docx_path = await write_md_to_word(report_information[0], research_id)
