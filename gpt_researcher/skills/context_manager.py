@@ -44,6 +44,8 @@ class ContextManager:
         Returns:
             Compressed context string of relevant content.
         """
+        actual_query_text = query if isinstance(query, str) else str(query)
+
         if self.researcher.verbose:
             await stream_output(
                 "logs",

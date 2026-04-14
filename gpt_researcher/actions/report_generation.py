@@ -384,6 +384,11 @@ async def generate_report(
     Returns:
         report: The final report.
     """
+    from gpt_researcher.skills.llm_visualizer import get_llm_visualizer
+
+    visualizer: LLMInteractionVisualizer = get_llm_visualizer()
+    visualizer.start_interaction("Generate Main Report")
+
     available_images = available_images or []
     generate_prompt = get_prompt_by_report_type(report_type, prompt_family)
     report = ""

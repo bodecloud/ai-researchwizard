@@ -12,15 +12,18 @@ from gpt_researcher.utils.logger import get_formatted_logger
 logger = get_formatted_logger()
 
 
-def scrape_urls(
+async def scrape_urls(
     urls: list[str],
     cfg: Config | None = None,
+    worker_pool: Any | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Scrape the urls.
 
     Args:
         urls (list[str]): List of urls.
         cfg (Config, optional): Config.
+        worker_pool (Any, optional): Unused compatibility parameter for callers
+            that provide a worker pool.
 
     Returns:
         tuple[list[dict[str, Any]], list[dict[str, Any]]]: Tuple containing scraped content and images.
@@ -47,7 +50,7 @@ def scrape_urls(
         scraped_data: list[dict[str, Any]] = scraper.run()
         images.extend(
             [
-                image_url
+                {"url": image_url, "score": 0.0}
                 for item in scraped_data
                 if "image_urls" in item
                 for image_url in item["image_urls"]
