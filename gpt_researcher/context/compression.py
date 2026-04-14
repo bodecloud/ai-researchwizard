@@ -133,7 +133,7 @@ class ContextCompressor:
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         relevance_filter = EmbeddingsFilter(embeddings=self.embeddings, similarity_threshold=self.similarity_threshold)
         pipeline_compressor = DocumentCompressorPipeline(transformers=[splitter, relevance_filter])
-        base_retriever = SearchAPIRetriever(pages=valid_documents)
+        base_retriever = SearchAPIRetriever(pages=self.documents)
         contextual_retriever = ContextualCompressionRetriever(base_compressor=pipeline_compressor, base_retriever=base_retriever)
         return contextual_retriever
 
@@ -197,7 +197,7 @@ class WrittenContentCompressor:
         splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
         relevance_filter = EmbeddingsFilter(embeddings=self.embeddings, similarity_threshold=self.similarity_threshold)
         pipeline_compressor = DocumentCompressorPipeline(transformers=[splitter, relevance_filter])
-        base_retriever = SectionRetriever(sections=valid_documents)
+        base_retriever = SectionRetriever(sections=self.documents)
         contextual_retriever = ContextualCompressionRetriever(base_compressor=pipeline_compressor, base_retriever=base_retriever)
         return contextual_retriever
 

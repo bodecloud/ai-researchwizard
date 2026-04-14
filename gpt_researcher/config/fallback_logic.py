@@ -21,6 +21,71 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 MAX_FALLBACKS: int = 25
 
+
+def _get_model_provider_family(model_id: str) -> str:
+    if "/" in model_id:
+        return model_id.split("/", 1)[0].lower()
+    if ":" in model_id:
+        return model_id.split(":", 1)[0].lower()
+    return model_id.lower()
+
+
+def _get_runtime_fallback_priority(model_id: str) -> int:
+    provider_family = _get_model_provider_family(model_id)
+
+    if provider_family == "openrouter":
+        return 0
+    if provider_family == "openai" and os.environ.get("OPENAI_API_KEY"):
+        return 1
+    if provider_family == "groq" and os.environ.get("GROQ_API_KEY"):
+        return 2
+
+    return 10
+
+
+def _extend_chat_models_with_runtime_candidates(
+    free_models: list[tuple[str, "LiteLLMBaseModelSpec"]],
+) -> list[tuple[str, "LiteLLMBaseModelSpec"]]:
+    if not os.environ.get("OPENAI_API_KEY") and not os.environ.get("GROQ_API_KEY"):
+        return free_models
+
+    try:
+        from llm_fallbacks.config import ALL_CHAT_MODELS
+    except Exception:
+        return free_models
+
+    seen_model_ids: set[str] = {model_id for model_id, _ in free_models}
+    runtime_candidates: list[tuple[int, int, tuple[str, LiteLLMBaseModelSpec]]] = []
+
+    for index, (model_id, spec) in enumerate(ALL_CHAT_MODELS):
+        if model_id in seen_model_ids:
+            continue
+
+        provider_family = _get_model_provider_family(model_id)
+        litellm_provider: str | None = spec.get("litellm_provider") or spec.get("provider")
+
+        if provider_family == "openai":
+            if not os.environ.get("OPENAI_API_KEY") or litellm_provider != "openai":
+                continue
+        elif provider_family == "groq":
+            if not os.environ.get("GROQ_API_KEY") or litellm_provider != "groq":
+                continue
+        else:
+            continue
+
+        runtime_candidates.append(
+            (_get_runtime_fallback_priority(model_id), index, (model_id, spec))
+        )
+
+    if not runtime_candidates:
+        return free_models
+
+    sorted_runtime_candidates = [
+        candidate
+        for _, _, candidate in sorted(runtime_candidates, key=lambda item: (item[0], item[1]))
+    ]
+    return [*free_models, *sorted_runtime_candidates]
+
 def map_litellm_provider_to_gptr_provider(
     litellm_provider_name: str | None,
 ) -> str | None:
@@ -134,9 +199,9 @@ def generate_auto_fallbacks_from_free_models(
 
     # Separate OpenRouter models for prioritization (to match manual config pattern)
     openrouter_candidates: list[str] = []
-    other_candidates: list[str] = []
+    other_candidates: list[tuple[int, int, str]] = []
 
-    for model_id_key in final_candidates:
+    for index, model_id_key in enumerate(final_candidates):
         spec: LiteLLMBaseModelSpec = free_models_dict.get(model_id_key, {})
         litellm_provider: str | None = spec.get("litellm_provider") or spec.get("provider")
 
@@ -152,10 +217,16 @@ def generate_auto_fallbacks_from_free_models(
         ):
             openrouter_candidates.append(model_id_key)
         else:
-            other_candidates.append(model_id_key)
+            other_candidates.append(
+                (_get_runtime_fallback_priority(model_id_key), index, model_id_key)
+            )
 
     # Process OpenRouter models first (to match manual priority)
-    prioritized_candidates: list[str] = openrouter_candidates + other_candidates
+    prioritized_other_candidates: list[str] = [
+        model_id_key
+        for _, _, model_id_key in sorted(other_candidates, key=lambda item: (item[0], item[1]))
+    ]
+    prioritized_candidates: list[str] = openrouter_candidates + prioritized_other_candidates
 
     for model_id_key in prioritized_candidates:
         original_model_id_lower: str = model_id_key.lower()
@@ -267,6 +338,9 @@ def parse_model_fallbacks(
 
             free_models = FREE_MODELS
 
+        if model_type in {"chat", "strategic_chat", "fast_chat"}:
+            free_models = _extend_chat_models_with_runtime_candidates(free_models)
+
         # Generate auto fallbacks using the same logic as auto mode
         auto_fallbacks: list[str] = generate_auto_fallbacks_from_free_models(
             free_models,
@@ -304,6 +378,9 @@ def parse_model_fallbacks(
             from llm_fallbacks.config import FREE_MODELS
 
             free_models = FREE_MODELS
+
+        if model_type in {"chat", "strategic_chat", "fast_chat"}:
+            free_models = _extend_chat_models_with_runtime_candidates(free_models)
 
         # Use the enhanced method
         final_fallbacks_list: list[str] = generate_auto_fallbacks_from_free_models(

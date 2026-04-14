@@ -4,6 +4,7 @@ This module provides the ReportGenerator class that handles report
 writing, including introductions, conclusions, and subtopic management.
 """
 
+import asyncio
 import json
 from typing import Any, Dict, Optional
 
@@ -14,6 +15,7 @@ from ..actions import (
     write_conclusion,
     write_report_introduction,
 )
+from ..skills.llm_visualizer import get_llm_visualizer
 from ..utils.llm import construct_subtopics
 
 
@@ -100,6 +102,7 @@ class ReportGenerator:
         report_params["context"] = context
         report_params["custom_prompt"] = custom_prompt
         report_params["available_images"] = available_images  # Pass pre-generated images
+        should_use_rag = self._should_use_rag_generation(context)
 
         if should_use_rag:
             if self.researcher.verbose:
@@ -163,6 +166,7 @@ class ReportGenerator:
             )
 
         # Finish visualization and generate flow diagram
+        visualizer = get_llm_visualizer()
         if visualizer.is_enabled():
             mermaid_diagram: str | None = visualizer.finish_flow()
 
