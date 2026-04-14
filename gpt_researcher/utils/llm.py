@@ -8,7 +8,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Any
+import time
+from typing import Any, Callable
 
 import tiktoken
 from langchain_core.language_models.llms import BaseLLM
@@ -23,7 +24,11 @@ from gpt_researcher.llm_provider.generic.base import (
 
 from ..prompts import PromptFamily
 from .costs import estimate_llm_cost
+from .llm_debug_logger import LLMDebugLogger, get_llm_debug_logger
 from .validators import Subtopics
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_llm(llm_provider: str, **kwargs):
@@ -37,6 +42,9 @@ def get_llm(llm_provider: str, **kwargs):
         A GenericLLMProvider instance configured for the specified provider.
     """
     from gpt_researcher.llm_provider import GenericLLMProvider
+
+    # Internal config objects are used by GPT Researcher, not the underlying chat model clients.
+    kwargs.pop("cfg", None)
     return GenericLLMProvider.from_provider(llm_provider, **kwargs)
 
 
@@ -109,6 +117,8 @@ async def create_chat_completion(
     Returns:
         str: The response from the chat completion
     """
+    from gpt_researcher.config import Config
+
     # Import visualization here to avoid circular imports
     from gpt_researcher.skills.llm_visualizer import get_llm_visualizer
 
