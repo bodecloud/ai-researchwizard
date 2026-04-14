@@ -51,6 +51,10 @@ class Config:
 
     CONFIG_DIR: ClassVar[str] = os.path.join(os.path.dirname(__file__), "variables")
     DefaultConfig: ClassVar[Self | None] = None
+    _fallbacks_initialized: ClassVar[bool] = False
+    _cached_fast_llm_fallback_providers: ClassVar[list[GenericLLMProvider]] = []
+    _cached_smart_llm_fallback_providers: ClassVar[list[GenericLLMProvider]] = []
+    _cached_strategic_llm_fallback_providers: ClassVar[list[GenericLLMProvider]] = []
 
     def __init__(self, config_path: str | None = None):
         """Initialize the config class.
