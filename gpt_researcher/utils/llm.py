@@ -48,6 +48,31 @@ def get_llm(llm_provider: str, **kwargs):
     return GenericLLMProvider.from_provider(llm_provider, **kwargs)
 
 
+def _get_configured_fallback_providers(
+    config_obj: Any,
+    llm_provider: str | None,
+    model: str | None,
+) -> list[Any]:
+    if not llm_provider or not model:
+        return []
+
+    llm_slots = (
+        (config_obj.fast_llm_provider, config_obj.fast_llm_model, config_obj.fast_llm_fallback_providers),
+        (config_obj.smart_llm_provider, config_obj.smart_llm_model, config_obj.smart_llm_fallback_providers),
+        (
+            config_obj.strategic_llm_provider,
+            config_obj.strategic_llm_model,
+            config_obj.strategic_llm_fallback_providers,
+        ),
+    )
+
+    for configured_provider, configured_model, fallback_providers in llm_slots:
+        if configured_provider == llm_provider and configured_model == model:
+            return list(fallback_providers)
+
+    return []
+
+
 def estimate_token_count(
     messages: list[dict[str, str]],
     model: str = "gpt-4.1",
@@ -206,6 +231,23 @@ async def create_chat_completion(
             **(llm_kwargs or {}),
         )
 
+        from gpt_researcher.llm_provider.generic.fallback import (
+            FallbackGenericLLMProvider,
+        )
+
+        configured_fallback_providers = _get_configured_fallback_providers(
+            config_obj,
+            llm_provider,
+            model,
+        )
+        if configured_fallback_providers:
+            provider = FallbackGenericLLMProvider(
+                provider.llm,
+                fallback_providers=configured_fallback_providers,
+                chat_log=getattr(config_obj, "chat_log", None),
+                verbose=getattr(config_obj, "verbose", True),
+            )
+
         # DEBUG: Check what type of provider we got
         logger.error(f"[DEBUG-PROVIDER] Provider type: {type(provider)}")
         logger.error(f"[DEBUG-PROVIDER] Provider class name: {provider.__class__.__name__}")
@@ -244,11 +286,6 @@ async def create_chat_completion(
 
         logger.debug(f"[DEBUG-LLM] Estimated model context limit: {default_context_limit}")
 
-        from gpt_researcher.llm_provider.generic.base import (
-            NO_SUPPORT_TEMPERATURE_MODELS,
-            SUPPORT_REASONING_EFFORT_MODELS,
-        )
-
         # Update kwargs based on model capabilities
         if model in SUPPORT_REASONING_EFFORT_MODELS:
             kwargs["reasoning_effort"] = reasoning_effort
@@ -279,9 +316,6 @@ async def create_chat_completion(
         start_time: float = time.time()
 
         # Check if this is a fallback provider - if so, let it handle all retries internally
-        from gpt_researcher.llm_provider.generic.fallback import (
-            FallbackGenericLLMProvider,
-        )
         is_fallback_provider: bool = isinstance(provider, FallbackGenericLLMProvider)
 
         if is_fallback_provider:
