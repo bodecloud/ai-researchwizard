@@ -48,6 +48,7 @@ _SUPPORTED_PROVIDERS: set[str] = {
     "nomic",
     "ollama",
     "openai",
+    "openrouter",
     "together",
     "voyageai",
 }
@@ -58,6 +59,7 @@ _FALLBACK_PRIORITY: list[str] = [
     "ollama",       # Works if local Ollama is running
     "custom",       # Custom provider
     "openai",       # Then try API-based providers
+    "openrouter",
     "aimlapi",
     "together",
     "netmind",
@@ -113,12 +115,26 @@ def _try_init_provider(
                     openai_api_base=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
                     **embedding_kwargs,
                 )
+        elif embedding_provider == "openrouter":
+            from langchain_openai import OpenAIEmbeddings
+
+            openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
+            if not openrouter_api_key:
+                logger.warning(f"Skipping {embedding_provider}: OPENROUTER_API_KEY not set")
+                return None
+
+            return OpenAIEmbeddings(
+                model=model,
+                openai_api_key=openrouter_api_key,
+                openai_api_base=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
+                **embedding_kwargs,
+            )
         elif embedding_provider == "azure_openai":
             from langchain_openai import AzureOpenAIEmbeddings
 
             azure_endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
             azure_api_key = os.getenv("AZURE_OPENAI_API_KEY")
-            azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+            azure_api_version = os.getenv("AZURE_OPENAI_API_VERSION") or os.getenv("OPENAI_API_VERSION")
 
             if not all([azure_endpoint, azure_api_key, azure_api_version]):
                 logger.warning(f"Skipping {embedding_provider}: Missing Azure OpenAI credentials")
@@ -257,10 +273,13 @@ class Memory:
         Raises:
             Exception: If the embedding provider is not supported.
         """
+        if embedding_provider not in _SUPPORTED_PROVIDERS:
+            raise Exception(
+                "Unsupported embedding provider "
+                f"'{embedding_provider}'. Supported providers are: {', '.join(sorted(_SUPPORTED_PROVIDERS))}"
+            )
+
         _embeddings = None
-        match embedding_provider:
-            case "custom":
-                from langchain_openai import OpenAIEmbeddings
 
         # Try the requested provider first
         logger.info(f"Attempting to initialize embedding provider: {embedding_provider}")

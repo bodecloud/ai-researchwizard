@@ -6,6 +6,7 @@ retrievers, and various operational parameters.
 """
 
 import json
+import logging
 import os
 import warnings
 from datetime import timedelta
@@ -17,9 +18,22 @@ from gpt_researcher.config.variables.base import BaseConfig
 from gpt_researcher.config.variables.default import DEFAULT_CONFIG
 from gpt_researcher.llm_provider import GenericLLMProvider
 from gpt_researcher.llm_provider.generic.base import ReasoningEfforts
+from gpt_researcher.retrievers.utils import get_all_retriever_names
 
-from .variables.base import BaseConfig
-from .variables.default import DEFAULT_CONFIG
+
+logger: logging.Logger = logging.getLogger(__name__)
+
+
+def _log_config_section(section_name: str, message: str, level: str = "INFO") -> None:
+    """Log config messages with a consistent prefix."""
+    log_level = level.upper()
+    formatted_message = f"[{section_name}] {message}"
+    if log_level in {"WARN", "WARNING"}:
+        logger.warning(formatted_message)
+    elif log_level == "ERROR":
+        logger.error(formatted_message)
+    else:
+        logger.info(formatted_message)
 
 
 class Config:
@@ -77,21 +91,6 @@ class Config:
 
         # Allowed root paths for MCP servers
         self.mcp_allowed_root_paths: list[str] = config_to_use.get("MCP_ALLOWED_ROOT_PATHS", []) or []
-
-    def _set_attributes(self, config: Dict[str, Any]) -> None:
-        """Set configuration attributes from config dictionary.
-
-        Merges environment variables with config file values, with
-        environment variables taking precedence.
-
-        Args:
-            config: Dictionary of configuration key-value pairs.
-        """
-        for key, value in config.items():
-            env_value = os.getenv(key)
-            if env_value is not None:
-                value = self.convert_env_value(key, env_value, BaseConfig.__annotations__[key])
-            setattr(self, key.lower(), value)
 
     @property
     def smart_llm(self) -> str | None:
@@ -370,7 +369,8 @@ class Config:
     @classmethod
     def load_config(cls, config_path: str | None) -> BaseConfig:
         """Load a configuration by name."""
-        # Merge with default config to ensure all keys are present
+        config_path = config_path or os.environ.get("CONFIG_PATH")
+
         copied_default_cfg: BaseConfig | dict[str, Any] = DEFAULT_CONFIG.copy()
 
         if config_path is None or not config_path.strip():
@@ -554,5 +554,4 @@ class Config:
         for server in self.mcp_servers:
             if isinstance(server, dict) and server.get("name") == name:
                 return server
-
         return {}

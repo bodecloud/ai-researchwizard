@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 # Add the parent directory to sys.path to make sure we can import from server
 sys.path.insert(0, os.path.abspath(os.path.dirname(os.path.dirname(__file__))))
@@ -50,13 +50,21 @@ logging.getLogger("uvicorn.supervisors.ChangeReload").setLevel(logging.WARNING)
 
 
 class ResearchRequest(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     task: str
-    report_type: str
-    report_source: str
-    tone: str
+    report_type: str = "research_report"
+    report_source: str = "web"
+    tone: str = "Objective"
     headers: dict | None = None
-    repo_name: str
-    branch_name: str
+    source_urls: List[str] = Field(default_factory=list)
+    document_urls: List[str] = Field(default_factory=list)
+    query_domains: List[str] = Field(default_factory=list)
+    repo_name: str | None = None
+    branch_name: str | None = None
+    mcp_enabled: bool = False
+    mcp_strategy: str = "fast"
+    mcp_configs: List[Dict[str, Any]] = Field(default_factory=list)
     generate_in_background: bool = True
 
 
@@ -135,6 +143,18 @@ report_store = ReportStore(Path(os.getenv('REPORT_STORE_PATH', os.path.join('dat
 
 # Constants
 DOC_PATH = os.getenv("DOC_PATH", "./my-docs")
+
+
+def resolve_tone(tone_name: str) -> Tone:
+    if tone_name in Tone.__members__:
+        return Tone[tone_name]
+
+    for tone in Tone:
+        if tone.value == tone_name:
+            return tone
+
+    logger.warning("Unknown tone '%s'; defaulting to Objective", tone_name)
+    return Tone.Objective
 
 # Startup event
 
@@ -275,15 +295,18 @@ async def write_report(research_request: ResearchRequest, research_id: str = Non
         task=research_request.task,
         report_type=research_request.report_type,
         report_source=research_request.report_source,
-        source_urls=[],
-        document_urls=[],
-        tone=Tone[research_request.tone],
+        source_urls=research_request.source_urls,
+        document_urls=research_request.document_urls,
+        tone=resolve_tone(research_request.tone),
         websocket=None,
         stream_output=None,
         headers=research_request.headers,
-        query_domains=[],
+        query_domains=research_request.query_domains,
         config_path="",
-        return_researcher=True
+        return_researcher=True,
+        mcp_enabled=research_request.mcp_enabled,
+        mcp_strategy=research_request.mcp_strategy,
+        mcp_configs=research_request.mcp_configs,
     )
 
     docx_path = await write_md_to_word(report_information[0], research_id)
