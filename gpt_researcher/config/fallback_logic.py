@@ -158,7 +158,8 @@ def generate_auto_fallbacks_from_free_models(
     prioritized_candidates: list[str] = openrouter_candidates + other_candidates
 
     for model_id_key in prioritized_candidates:
-        model_id_key_lower: str = model_id_key.lower()
+        original_model_id_lower: str = model_id_key.lower()
+        model_id_key_lower: str = original_model_id_lower
         spec: LiteLLMBaseModelSpec = free_models_dict.get(model_id_key, {})
         litellm_provider: str | None = spec.get("litellm_provider") or spec.get("provider")
 
@@ -189,8 +190,14 @@ def generate_auto_fallbacks_from_free_models(
             formatted_fallbacks.append(model_id_key)
             continue
 
+        # LiteLLM-backed models need to keep their provider-qualified model identifier.
+        if final_provider == "litellm":
+            formatted_model_id = original_model_id_lower
+        else:
+            formatted_model_id = model_id_key_lower
+
         # Format according to manual configuration patterns using mapped providers
-        final_format: str = f"{final_provider}:{model_id_key_lower}"
+        final_format: str = f"{final_provider}:{formatted_model_id}"
         formatted_fallbacks.append(final_format)
 
     # Final check for environment requirements
