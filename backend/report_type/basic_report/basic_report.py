@@ -64,7 +64,7 @@ class BasicReport:
         query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
         return f"research_{timestamp}_{query_hash}"
 
-    async def run(self):
+    async def run(self, custom_prompt: str = ""):
         await self.gpt_researcher.conduct_research()
-        report = await self.gpt_researcher.write_report()
+        report = await self.gpt_researcher.write_report(custom_prompt=custom_prompt)
         return report

@@ -430,6 +430,8 @@ Place each image on its own line after the relevant section header or paragraph.
                 total_words=cfg.total_words,  # pyright: ignore[reportAttributeAccessIssue]
                 language=cfg.language,  # pyright: ignore[reportAttributeAccessIssue]
             )
+        elif custom_prompt:
+            generated_prompt = f"{custom_prompt}\n\nContext: {context}"
         else:
             generated_prompt = generate_prompt(
                 query,

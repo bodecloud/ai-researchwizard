@@ -109,7 +109,7 @@ class WebSocketManager:
         )
         return report
 
-async def run_agent(task, report_type, report_source, source_urls, document_urls, tone: Tone, websocket, stream_output=stream_output, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[]):
+async def run_agent(task, report_type, report_source, source_urls, document_urls, tone: Tone, websocket, stream_output=stream_output, headers=None, query_domains=[], config_path="", return_researcher=False, mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], custom_prompt=""):
     """Run the agent."""    
     # Create logs handler for this research task
     logs_handler = CustomLogsHandler(websocket, task)
@@ -158,7 +158,7 @@ async def run_agent(task, report_type, report_source, source_urls, document_urls
             mcp_configs=mcp_configs if mcp_enabled else None,
             mcp_strategy=mcp_strategy if mcp_enabled else None,
         )
-        report = await researcher.run()
+        report = await researcher.run(custom_prompt=custom_prompt)
         
     else:
         researcher = BasicReport(
