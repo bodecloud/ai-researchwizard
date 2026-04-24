@@ -140,7 +140,8 @@ minimal_*.py
 comprehensive_test.py
 
 # MCP server (if not needed in production)
-mcp-server/
+# Kept enabled: Dockerfile.fullstack overlays our patched server.py onto upstream clone.
+# mcp-server/
 gptr-mcp/.git
 
 # Miscellaneous

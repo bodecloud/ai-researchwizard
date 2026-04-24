@@ -63,12 +63,17 @@ RUN pip config set global.timeout 60 && \
   pip install --no-cache-dir --use-deprecated=legacy-resolver -r requirements.txt --prefer-binary && \
   pip install --no-cache-dir --use-deprecated=legacy-resolver -r multi_agents/requirements.txt --prefer-binary
 
-# Clone gptr-mcp from upstream; fall back to local copy if unavailable
+# Clone gptr-mcp from upstream; overlay local patched mcp-server/ on top so our
+# soft-fail server.py (no hard exit on missing OPENAI_API_KEY) wins.
 COPY ./gptr-mcp ./gptr-mcp.local
+COPY ./mcp-server ./mcp-server.local
 RUN git clone https://github.com/assafelovic/gptr-mcp 2>/dev/null \
   || { echo "Upstream clone failed, using local gptr-mcp"; cp -a ./gptr-mcp.local ./gptr-mcp; } && \
   if [ -f ./gptr-mcp.local/server.py ]; then cp -a ./gptr-mcp.local/server.py ./gptr-mcp/server.py; fi && \
-  rm -rf ./gptr-mcp.local && \
+  if [ -d ./mcp-server.local ] && [ -f ./mcp-server.local/server.py ]; then \
+    cp -a ./mcp-server.local/. ./gptr-mcp/; \
+  fi && \
+  rm -rf ./gptr-mcp.local ./mcp-server.local && \
   pip install --no-cache-dir --use-deprecated=legacy-resolver -r gptr-mcp/requirements.txt --prefer-binary
 
 ########################################################################
@@ -211,7 +216,7 @@ RUN echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
   echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo '[program:mcp]' >> /etc/supervisor/conf.d/supervisord.conf && \
-  echo "command=sh -c 'grep -rl \"mcp.run(transport=\\\"\(streamable-http\|sse\)\\\"\" ./server.py | xargs sed -i \"s/port=8000/port=8080/g\" && python server.py'" >> /etc/supervisor/conf.d/supervisord.conf && \
+  echo "command=sh -c 'PYTHONPATH=/usr/src/app:\${PYTHONPATH} GPTR_MCP_PORT=\${GPTR_MCP_PORT:-8080} GPTR_MCP_HOST=\${GPTR_MCP_HOST:-0.0.0.0} GPTR_MCP_TRANSPORT=\${GPTR_MCP_TRANSPORT:-streamable-http} python server.py'" >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'directory=/usr/src/app/gptr-mcp' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
   echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
