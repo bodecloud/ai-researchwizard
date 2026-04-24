@@ -34,7 +34,7 @@ class BingSearch(RetrieverABC):
         """
         try:
             api_key = os.environ["BING_API_KEY"]
-        except:
+        except Exception:
             raise Exception(
                 "Bing API key not found. Please set the BING_API_KEY environment variable.")
         return api_key
