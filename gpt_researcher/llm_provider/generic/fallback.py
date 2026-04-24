@@ -15,8 +15,42 @@ logger: logging.Logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def _is_auth_failure(error: Exception) -> bool:
+    """Return True when an exception indicates provider credential/auth failure."""
+    error_name: str = error.__class__.__name__.lower()
+    error_msg: str = str(error).lower()
+
+    if "auth" in error_name or "unauthorized" in error_name:
+        return True
+
+    auth_markers: tuple[str, ...] = (
+        "incorrect api key",
+        "invalid api key",
+        "authentication",
+        "unauthorized",
+        "user not found",
+        "invalid x-api-key",
+    )
+    return any(marker in error_msg for marker in auth_markers)
+
+
+def _provider_cache_key(provider_obj: Any) -> str:
+    """Build a stable provider key for temporary runtime disablement."""
+    llm_obj: Any = getattr(provider_obj, "llm", provider_obj)
+    model_name: str = str(
+        getattr(llm_obj, "model_name", None)
+        or getattr(llm_obj, "model", None)
+        or "unknown"
+    )
+    module_name: str = str(getattr(llm_obj.__class__, "__module__", "unknown"))
+    base_url: str = str(getattr(llm_obj, "openai_api_base", None) or getattr(llm_obj, "base_url", ""))
+    return f"{module_name}|{model_name}|{base_url}"
+
+
 class FallbackGenericLLMProvider(GenericLLMProvider):
     """LLM Provider with fallback support."""
+
+    _auth_failed_provider_cache_keys: set[str] = set()
 
     def __init__(
         self,
@@ -259,6 +293,12 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
 
         # Try primary provider first
         try:
+            primary_cache_key: str = _provider_cache_key(self)
+            if primary_cache_key in self._auth_failed_provider_cache_keys:
+                raise Exception(
+                    "Primary provider was previously marked unavailable due to authentication failure"
+                )
+
             if self.verbose:
                 logger.debug(f"[FALLBACK-DEBUG] Attempting primary provider: '{primary_model_name}'")
 
@@ -296,6 +336,9 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
             return response
 
         except Exception as e:
+            if _is_auth_failure(e):
+                self._auth_failed_provider_cache_keys.add(_provider_cache_key(self))
+
             logger.warning(f"[FALLBACK-DEBUG] Primary provider failed: '{primary_model_name}'")
             logger.warning(f"[FALLBACK-DEBUG] Primary error: '{e.__class__.__name__}: {e}...'")
 
@@ -339,6 +382,15 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
             last_error: Exception = e
             for i, fallback_provider in enumerate(self.fallback_providers):
                 try:
+                    fallback_cache_key: str = _provider_cache_key(fallback_provider)
+                    if fallback_cache_key in self._auth_failed_provider_cache_keys:
+                        if self.verbose:
+                            logger.debug(
+                                "[FALLBACK-DEBUG] Skipping fallback %s due to previous auth failure",
+                                fallback_cache_key,
+                            )
+                        continue
+
                     fallback_model: str = getattr(
                         fallback_provider.llm,
                         "model_name",
@@ -408,6 +460,11 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
                     return response
 
                 except Exception as fallback_error:
+                    if _is_auth_failure(fallback_error):
+                        self._auth_failed_provider_cache_keys.add(
+                            _provider_cache_key(fallback_provider)
+                        )
+
                     if self.verbose:
                         logger.warning(f"[FALLBACK-DEBUG] Fallback provider {i + 1} failed: '{fallback_model}' Fallback error: '{fallback_error.__class__.__name__}: {str(fallback_error)[:300] if len(str(fallback_error)) > 300 else str(fallback_error)}'")
 
