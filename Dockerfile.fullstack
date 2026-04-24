@@ -67,7 +67,7 @@ RUN pip config set global.timeout 60 && \
 COPY ./gptr-mcp ./gptr-mcp.local
 RUN git clone https://github.com/assafelovic/gptr-mcp 2>/dev/null \
   || { echo "Upstream clone failed, using local gptr-mcp"; cp -a ./gptr-mcp.local ./gptr-mcp; } && \
-  cp -a ./gptr-mcp.local/server.py ./gptr-mcp/server.py && \
+  if [ -f ./gptr-mcp.local/server.py ]; then cp -a ./gptr-mcp.local/server.py ./gptr-mcp/server.py; fi && \
   rm -rf ./gptr-mcp.local && \
   pip install --no-cache-dir --use-deprecated=legacy-resolver -r gptr-mcp/requirements.txt --prefer-binary
 
