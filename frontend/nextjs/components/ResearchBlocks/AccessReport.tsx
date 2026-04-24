@@ -1,5 +1,5 @@
 import React from 'react';
-import {getHost} from '../../helpers/getHost'
+import { getHost, HostResult } from '../../helpers/getHost'
 
 interface AccessReportProps {
   accessData: {
@@ -15,7 +15,8 @@ interface AccessReportProps {
 }
 
 const AccessReport: React.FC<AccessReportProps> = ({ accessData, chatBoxSettings, report, onShareClick }) => {
-  const host = getHost();
+  const hostResult: HostResult = getHost();
+  const host = `${hostResult.isSecure ? 'https://' : 'http://'}${hostResult.cleanHost}`;
 
   const getReportLink = (dataType: 'pdf' | 'docx' | 'json'): string => {
     // Early return if path is not available
