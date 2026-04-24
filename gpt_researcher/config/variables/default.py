@@ -8,9 +8,9 @@ DEFAULT_CONFIG: BaseConfig = {
     "EMBEDDING_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "SIMILARITY_THRESHOLD": 0.42,
     # Keep LLMs in automatic mode so fallback logic can select the best available free model.
-    "FAST_LLM": "auto",
-    "SMART_LLM": "auto",
-    "STRATEGIC_LLM": "auto",
+        "FAST_LLM": "openrouter:openai/gpt-4o-mini",
+        "SMART_LLM": "openrouter:openai/gpt-4o-mini",
+        "STRATEGIC_LLM": "openrouter:openai/gpt-4o-mini",
     "FAST_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "SMART_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "STRATEGIC_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
