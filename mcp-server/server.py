@@ -329,8 +329,28 @@ def run_server():
     print("🚀 GPT Researcher MCP Server starting... Check researcher_mcp_server.log for details")  # noqa: E501 # pylint: disable=line-too-long
 
     # Let FastMCP handle the event loop
+    # Default to HTTP transport when GPTR_MCP_TRANSPORT is set or a PORT is
+    # available (containerised deployments). Otherwise fall back to stdio.
+    transport = os.environ.get("GPTR_MCP_TRANSPORT", "streamable-http")
+    port_env = os.environ.get("GPTR_MCP_PORT") or os.environ.get("MCP_PORT") or "8080"
+    host_env = os.environ.get("GPTR_MCP_HOST", "0.0.0.0")
     try:
-        mcp.run()
+        port_val = int(port_env)
+    except (TypeError, ValueError):
+        port_val = 8080
+
+    # FastMCP exposes host/port via settings attribute
+    try:
+        mcp.settings.host = host_env  # type: ignore[attr-defined]
+        mcp.settings.port = port_val  # type: ignore[attr-defined]
+    except Exception:
+        pass
+
+    try:
+        if transport in {"streamable-http", "sse", "http"}:
+            mcp.run(transport=transport if transport != "http" else "streamable-http")
+        else:
+            mcp.run()
         # Note: If we reach here, the server has stopped
         logger.info("MCP Server has stopped")
     except Exception as e:

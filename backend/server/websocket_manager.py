@@ -95,11 +95,35 @@ class WebSocketManager:
             except Exception:
                 pass  # If this fails too, there's nothing more we can do
 
-    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[]):
+    async def start_streaming(self, task, report_type, report_source, source_urls, document_urls, tone, websocket, headers=None, query_domains=[], mcp_enabled=False, mcp_strategy="fast", mcp_configs=[], max_search_results=None):
         """Start streaming the output."""
-        tone = Tone[tone]
+        # Accept tone as Tone enum, member name (any case), or descriptive value.
+        if isinstance(tone, Tone):
+            pass
+        else:
+            tone_str = str(tone or "").strip() or "Objective"
+            # Try name match (case-insensitive)
+            matched = None
+            for member in Tone:
+                if member.name.lower() == tone_str.lower():
+                    matched = member
+                    break
+                if member.value.lower().startswith(tone_str.lower()):
+                    matched = member
+                    break
+            tone = matched or Tone.Objective
         # add customized JSON config file path here
         config_path = "default"
+
+        # max_search_results is accepted for forward compatibility with
+        # extract_command_data()'s return tuple. Propagate via env if set so
+        # downstream retrievers can honor it.
+        if max_search_results is not None:
+            import os
+            try:
+                os.environ["MAX_SEARCH_RESULTS_PER_QUERY"] = str(int(max_search_results))
+            except (TypeError, ValueError):
+                pass
 
         # Pass MCP parameters to run_agent
         report = await run_agent(

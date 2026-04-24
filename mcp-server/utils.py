@@ -11,12 +11,11 @@ from typing import Any
 
 if importlib.util.find_spec("loguru"):
     from loguru import logger
+    # loguru doesn't have setLevel; configure via its own API.
+    logger.configure(handlers=[{"sink": sys.stderr, "level": "INFO"}])
 else:
     logger = logging.getLogger(__name__)
-
-logger.setLevel(logging.INFO)
-# Configure logging for console only (no file logging)
-logger.configure(handlers=[{"sink": sys.stderr, "level": "INFO"}])
+    logger.setLevel(logging.INFO)
 
 # Research store to track ongoing research topics and contexts
 research_store: dict[str, Any] = {}
