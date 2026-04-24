@@ -65,6 +65,45 @@ _OPENROUTER_VENDOR_PREFIXES: set[str] = {
 }
 
 
+def _env_value_from_var_or_file(env_name: str) -> str | None:
+    """Return secret value from ENV or matching *_FILE, if available."""
+    direct_value: str | None = os.environ.get(env_name)
+    if direct_value and direct_value.strip():
+        return direct_value.strip()
+
+    file_var: str = f"{env_name}_FILE"
+    file_path: str | None = os.environ.get(file_var)
+    if not file_path or not file_path.strip():
+        return None
+
+    try:
+        with open(file_path.strip(), "r", encoding="utf-8") as secret_file:
+            value: str = secret_file.read().strip()
+    except OSError:
+        return None
+
+    return value or None
+
+
+def _looks_placeholder_secret(value: str | None) -> bool:
+    """Best-effort filter for unset/demo placeholder secret values."""
+    normalized: str = (value or "").strip().lower()
+    if not normalized:
+        return True
+
+    placeholder_fragments: tuple[str, ...] = (
+        "your_",
+        "replace",
+        "changeme",
+        "example",
+        "dummy",
+        "placeholder",
+        "test-key",
+        "linux_env",
+    )
+    return any(fragment in normalized for fragment in placeholder_fragments)
+
+
 def _is_provider_available(provider_name: str | None) -> bool:
     provider = (provider_name or "").strip().lower()
     if not provider:
@@ -100,7 +139,11 @@ def _is_provider_available(provider_name: str | None) -> bool:
     if not required_keys:
         return True
 
-    has_key = any(bool(os.environ.get(key)) for key in required_keys)
+    has_key = any(
+        bool(secret_value)
+        and not _looks_placeholder_secret(secret_value)
+        for secret_value in (_env_value_from_var_or_file(key) for key in required_keys)
+    )
     if not has_key:
         return False
 
@@ -108,7 +151,7 @@ def _is_provider_available(provider_name: str | None) -> bool:
     # cause LiteLLM Azure initialization to fail hard at runtime.
     if provider == "azure":
         has_azure_endpoint = any(
-            bool(os.environ.get(key))
+            bool((os.environ.get(key) or "").strip())
             for key in ("AZURE_API_BASE", "AZURE_OPENAI_ENDPOINT", "AZURE_ENDPOINT")
         )
         if not has_azure_endpoint:
