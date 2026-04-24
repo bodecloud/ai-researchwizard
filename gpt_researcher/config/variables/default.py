@@ -7,10 +7,10 @@ DEFAULT_CONFIG: BaseConfig = {
     "EMBEDDING": "openai:text-embedding-3-small",
     "EMBEDDING_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "SIMILARITY_THRESHOLD": 0.42,
-    # Keep LLMs in automatic mode so fallback logic can select the best available free model.
-        "FAST_LLM": "openrouter:openai/gpt-4o-mini",
-        "SMART_LLM": "openrouter:openai/gpt-4o-mini",
-        "STRATEGIC_LLM": "openrouter:openai/gpt-4o-mini",
+    # Prefer explicit OpenRouter free-tier models as defaults.
+    "FAST_LLM": "openrouter:mistralai/mistral-small-3.1-24b-instruct:free",
+    "SMART_LLM": "openrouter:google/gemini-2.0-flash-exp:free",
+    "STRATEGIC_LLM": "openrouter:google/gemini-2.0-flash-exp:free",
     "FAST_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "SMART_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "STRATEGIC_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
