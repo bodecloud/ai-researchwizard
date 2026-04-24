@@ -292,55 +292,69 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
                 logger.warning(f"Debug logging start failed: {e.__class__.__name__}: {e}")
 
         # Try primary provider first
-        try:
-            primary_cache_key: str = _provider_cache_key(self)
-            if primary_cache_key in self._auth_failed_provider_cache_keys:
-                raise Exception(
-                    "Primary provider was previously marked unavailable due to authentication failure"
-                )
-
-            if self.verbose:
-                logger.debug(f"[FALLBACK-DEBUG] Attempting primary provider: '{primary_model_name}'")
-
-            # Temporarily disable debug logging for the primary provider to avoid duplicate interactions
-            original_debug_logger: LLMDebugLogger | None = self.debug_logger
-            self.debug_logger = None
-
+        primary_cache_key: str = _provider_cache_key(self)
+        e = None
+        primary_was_blacklisted = False
+        
+        # Only attempt primary provider if it hasn't been marked as failed
+        if primary_cache_key in self._auth_failed_provider_cache_keys:
+            # Primary provider already marked as failed, skip it and go to fallbacks
+            logger.debug(
+                f"[FALLBACK-DEBUG] Primary provider {primary_model_name} already marked unavailable from previous auth failure. Skipping to fallbacks..."
+            )
+            primary_was_blacklisted = True
+        else:
             try:
-                response: str = await super().get_chat_response(
-                    messages,
-                    stream,
-                    websocket,
-                )
-            finally:
-                # Restore debug logger
-                self.debug_logger = original_debug_logger
+                if self.verbose:
+                    logger.debug(f"[FALLBACK-DEBUG] Attempting primary provider: '{primary_model_name}'")
 
-            if self.verbose:
-                logger.debug(f"[FALLBACK-DEBUG] Primary provider succeeded: '{primary_model_name}'")
+                # Temporarily disable debug logging for the primary provider to avoid duplicate interactions
+                original_debug_logger: LLMDebugLogger | None = self.debug_logger
+                self.debug_logger = None
 
-            # Log successful response
-            if interaction_id and interaction_id.strip():
                 try:
-                    duration: float = time.time() - start_time
-                    debug_logger.log_response(
-                        response=response,
-                        success=True,
-                        duration_seconds=duration,
+                    response: str = await super().get_chat_response(
+                        messages,
+                        stream,
+                        websocket,
                     )
-                    debug_logger.finish_interaction()
-                except Exception as e:
-                    if self.verbose:
-                        logger.warning(f"Debug logging response failed: {e.__class__.__name__}: {e}")
+                finally:
+                    # Restore debug logger
+                    self.debug_logger = original_debug_logger
 
-            return response
+                if self.verbose:
+                    logger.debug(f"[FALLBACK-DEBUG] Primary provider succeeded: '{primary_model_name}'")
 
-        except Exception as e:
-            if _is_auth_failure(e):
-                self._auth_failed_provider_cache_keys.add(_provider_cache_key(self))
+                # Log successful response
+                if interaction_id and interaction_id.strip():
+                    try:
+                        duration: float = time.time() - start_time
+                        debug_logger.log_response(
+                            response=response,
+                            success=True,
+                            duration_seconds=duration,
+                        )
+                        debug_logger.finish_interaction()
+                    except Exception as log_e:
+                        if self.verbose:
+                            logger.warning(f"Debug logging response failed: {log_e.__class__.__name__}: {log_e}")
 
-            logger.warning(f"[FALLBACK-DEBUG] Primary provider failed: '{primary_model_name}'")
-            logger.warning(f"[FALLBACK-DEBUG] Primary error: '{e.__class__.__name__}: {e}...'")
+                return response
+
+            except Exception as primary_e:
+                e = primary_e
+        
+        # Handle primary failure (e will be None if primary was skipped OR if primary succeeded and returned above)
+        if e is not None or primary_was_blacklisted:
+            if e is not None:
+                if _is_auth_failure(e):
+                    self._auth_failed_provider_cache_keys.add(_provider_cache_key(self))
+
+                logger.warning(f"[FALLBACK-DEBUG] Primary provider failed: '{primary_model_name}'")
+                logger.warning(f"[FALLBACK-DEBUG] Primary error: '{e.__class__.__name__}: {e}...'")
+            else:
+                # Primary was blacklisted, so no real exception to report
+                logger.debug(f"[FALLBACK-DEBUG] Primary provider {primary_model_name} is blacklisted, trying fallbacks")
 
             if not self.fallback_providers:
                 logger.warning("[FALLBACK-DEBUG] No fallback providers available. Re-raising primary error.")
@@ -349,11 +363,13 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
                 if interaction_id and interaction_id.strip():
                     try:
                         duration = time.time() - start_time
+                        error_msg = str(e) if e else "Primary provider unavailable"
+                        error_type = e.__class__.__name__ if e else "Unavailable"
                         debug_logger.log_response(
                             response="",
                             success=False,
-                            error_message=str(e),
-                            error_type=e.__class__.__name__,
+                            error_message=error_msg,
+                            error_type=error_type,
                             duration_seconds=duration,
                         )
                         debug_logger.finish_interaction()
@@ -365,11 +381,12 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
 
             # Log the primary failure only when fallbacks are available
             if debug_logger.current_interaction is not None:
+                primary_error_msg = f"{e.__class__.__name__}: {e}" if e else "Primary provider already marked unavailable from previous auth failure"
                 debug_logger.log_retry_attempt(
                     attempt_number=1,
                     reason=f"Primary provider {primary_model_name} failed",
                     details={
-                        "primary_error": f"{e.__class__.__name__}: {e}",
+                        "primary_error": primary_error_msg,
                         "primary_model": primary_model_name,
                         "total_fallbacks_available": len(self.fallback_providers),
                     },
@@ -379,7 +396,11 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
                 logger.debug(f"[FALLBACK-DEBUG] Trying {len(self.fallback_providers)} fallback providers...")
 
             # Try each fallback in order
-            last_error: Exception = e
+            # Initialize last_error to either the primary exception or a generic message if primary was just skipped
+            if e is not None:
+                last_error: Exception = e
+            else:
+                last_error: Exception = Exception("Primary provider unavailable, attempting fallbacks")
             for i, fallback_provider in enumerate(self.fallback_providers):
                 try:
                     fallback_cache_key: str = _provider_cache_key(fallback_provider)
