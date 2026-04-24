@@ -21,6 +21,137 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 MAX_FALLBACKS: int = 25
 
+_LITELLM_PROVIDER_ALIASES: dict[str, str] = {
+    "google": "gemini",
+    "google_genai": "gemini",
+    "google-generativeai": "gemini",
+    "vertexai": "vertex_ai",
+    "together": "together_ai",
+}
+
+_LITELLM_KNOWN_PROVIDER_PREFIXES: set[str] = {
+    "anthropic",
+    "azure",
+    "bedrock",
+    "cohere",
+    "deepseek",
+    "gemini",
+    "groq",
+    "huggingface",
+    "ollama",
+    "openai",
+    "openrouter",
+    "replicate",
+    "together_ai",
+    "vertex_ai",
+    "xai",
+}
+def _infer_litellm_provider_from_model(model_id: str) -> str | None:
+    normalized = (model_id or "").strip().lower()
+    if not normalized or "/" not in normalized:
+        return None
+    return normalized.split("/", 1)[0]
+
+_OPENROUTER_VENDOR_PREFIXES: set[str] = {
+    "anthropic",
+    "deepseek",
+    "google",
+    "meta",
+    "meta-llama",
+    "microsoft",
+    "mistralai",
+    "openai",
+    "qwen",
+}
+
+
+def _is_provider_available(provider_name: str | None) -> bool:
+    provider = (provider_name or "").strip().lower()
+    if not provider:
+        return False
+
+    provider = _LITELLM_PROVIDER_ALIASES.get(provider, provider)
+
+    key_requirements: dict[str, tuple[str, ...]] = {
+        "openai": ("OPENAI_API_KEY",),
+        "openrouter": ("OPENROUTER_API_KEY",),
+        "groq": ("GROQ_API_KEY",),
+        "anthropic": ("ANTHROPIC_API_KEY",),
+        "mistralai": ("MISTRAL_API_KEY", "MISTRALAI_API_KEY"),
+        "together": ("TOGETHER_API_KEY", "TOGETHERAI_API_KEY"),
+        "deepseek": ("DEEPSEEK_API_KEY",),
+        "google_genai": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+        "google_vertexai": ("GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_CLOUD_PROJECT"),
+        "huggingface": ("HUGGINGFACE_API_TOKEN", "HF_TOKEN"),
+        "xai": ("XAI_API_KEY",),
+        "cohere": ("COHERE_API_KEY",),
+        "fireworks": ("FIREWORKS_API_KEY",),
+        "dashscope": ("DASHSCOPE_API_KEY",),
+        "aimlapi": ("AIMLAPI_API_KEY",),
+        "forge": ("FORGE_API_KEY",),
+        "gigachat": ("GIGACHAT_API_KEY",),
+        "azure": ("AZURE_API_KEY", "AZURE_OPENAI_API_KEY"),
+    }
+
+    if provider in {"litellm", "ollama"}:
+        return True
+
+    required_keys = key_requirements.get(provider)
+    if not required_keys:
+        return True
+
+    has_key = any(bool(os.environ.get(key)) for key in required_keys)
+    if not has_key:
+        return False
+
+    # Azure models also require an endpoint/base URL. A key alone can still
+    # cause LiteLLM Azure initialization to fail hard at runtime.
+    if provider == "azure":
+        has_azure_endpoint = any(
+            bool(os.environ.get(key))
+            for key in ("AZURE_API_BASE", "AZURE_OPENAI_ENDPOINT", "AZURE_ENDPOINT")
+        )
+        if not has_azure_endpoint:
+            return False
+
+    return True
+
+
+def _normalize_litellm_model_identifier(
+    model_id: str,
+    provider_hint: str | None = None,
+) -> str | None:
+    """Return a LiteLLM-compatible model id, or None when it cannot be inferred safely."""
+    normalized_model = (model_id or "").strip().lower()
+    if not normalized_model:
+        return None
+
+    hint = (provider_hint or "").strip().lower()
+    hint = _LITELLM_PROVIDER_ALIASES.get(hint, hint)
+
+    if "/" in normalized_model:
+        prefix = normalized_model.split("/", 1)[0]
+        if prefix in _LITELLM_KNOWN_PROVIDER_PREFIXES:
+            return normalized_model
+
+        if hint in _LITELLM_KNOWN_PROVIDER_PREFIXES:
+            if hint == "openrouter":
+                return f"openrouter/{normalized_model}"
+            return f"{hint}/{normalized_model}"
+
+        if prefix in _OPENROUTER_VENDOR_PREFIXES:
+            return f"openrouter/{normalized_model}"
+
+        return None
+
+    if hint in _LITELLM_KNOWN_PROVIDER_PREFIXES:
+        return f"{hint}/{normalized_model}"
+
+    if normalized_model.startswith("gemini"):
+        return f"gemini/{normalized_model}"
+
+    return None
+
 
 def _get_model_provider_family(model_id: str) -> str:
     if "/" in model_id:
@@ -101,13 +232,50 @@ def map_litellm_provider_to_gptr_provider(
 
     name_lower: str = litellm_provider_name.lower()
 
-    # OpenRouter models keep their original provider name
-    if name_lower == "openrouter":
-        return "openrouter"
+    # Prefer native GPT-Researcher providers whenever they are supported.
+    # This avoids sending provider-less model identifiers to ChatLiteLLM.
+    provider_aliases: dict[str, str] = {
+        "gemini": "google_genai",
+        "google": "google_genai",
+        "vertex_ai": "google_vertexai",
+        "vertexai": "google_vertexai",
+        "mistral": "mistralai",
+        "together_ai": "together",
+        "vllm": "vllm_openai",
+    }
 
-    # All other providers from llm_fallbacks should be normalized to "litellm"
-    # This ensures that non-OpenRouter models use the generic litellm provider
-    # instead of their specific providers (google_genai, anthropic, etc.)
+    mapped_name: str = provider_aliases.get(name_lower, name_lower)
+
+    # Keep known providers as-is so each client receives the model format it expects.
+    supported_native_providers: set[str] = {
+        "aimlapi",
+        "anthropic",
+        "azure_openai",
+        "bedrock",
+        "cohere",
+        "dashscope",
+        "deepseek",
+        "fireworks",
+        "gigachat",
+        "google_genai",
+        "google_vertexai",
+        "groq",
+        "huggingface",
+        "mistralai",
+        "netmind",
+        "ollama",
+        "openai",
+        "openrouter",
+        "together",
+        "vllm_openai",
+        "xai",
+        "forge",
+    }
+
+    if mapped_name in supported_native_providers:
+        return mapped_name
+
+    # Fallback to LiteLLM only when we cannot confidently map the provider.
     return "litellm"
 
 
@@ -240,6 +408,9 @@ def generate_auto_fallbacks_from_free_models(
         # Use mapped provider if available, fallback to original
         final_provider: str = mapped_provider or litellm_provider or "unknown"
 
+        if not _is_provider_available(final_provider):
+            continue
+
         # Determine actual model name and format according to manual patterns
         if "/" in model_id_key_lower:
             # e.g. "openrouter/meta-llama/llama-3-8b-instruct" -> "openrouter:meta-llama/llama-3-8b-instruct:free"
@@ -253,6 +424,11 @@ def generate_auto_fallbacks_from_free_models(
             elif mapped_provider in ["openrouter", "litellm"]:
                 final_provider = mapped_provider
 
+            # Some generated model IDs are shaped like "meta/..." for OpenRouter.
+            # Preserve the original qualified ID for OpenRouter to avoid dropping vendor prefixes.
+            if final_provider == "openrouter" and provider_from_key not in ["openrouter"]:
+                model_id_key_lower = original_model_id_lower
+
         elif (
             model_id_key_lower.count(":") == 1 and not model_id_key_lower.endswith(":free")
             or model_id_key_lower.count(":") == 2 and model_id_key_lower.endswith(":free")
@@ -263,7 +439,15 @@ def generate_auto_fallbacks_from_free_models(
 
         # LiteLLM-backed models need to keep their provider-qualified model identifier.
         if final_provider == "litellm":
-            formatted_model_id = original_model_id_lower
+            formatted_model_id = _normalize_litellm_model_identifier(
+                original_model_id_lower,
+                litellm_provider,
+            )
+            if not formatted_model_id:
+                continue
+            litellm_provider_family = _infer_litellm_provider_from_model(formatted_model_id)
+            if litellm_provider_family and not _is_provider_available(litellm_provider_family):
+                continue
         else:
             formatted_model_id = model_id_key_lower
 
@@ -307,7 +491,8 @@ def parse_model_fallbacks(
         else primary_model_id
     )
 
-    # For manual fallbacks - ALWAYS append FREE_MODELS to user-specified fallbacks
+    # For manual fallbacks, honor only the explicitly configured models.
+    # Auto-generated free-model fallbacks are only used when the value is "auto".
     if fallbacks_str.strip().lower() != "auto":
         raw_fallbacks: list[str] = [
             fb.strip() for fb in fallbacks_str.split(",") if fb.strip()
@@ -324,44 +509,8 @@ def parse_model_fallbacks(
             x for x in parsed_fallbacks if not (x in seen or seen.add(x))
         ]
 
-        # Load FREE_MODELS for auto-generation
-        if model_type == "embedding":
-            from llm_fallbacks.config import FREE_EMBEDDING_MODELS
-
-            free_models: list[tuple[str, LiteLLMBaseModelSpec]] = FREE_EMBEDDING_MODELS
-        elif model_type == "chat":
-            from llm_fallbacks.config import FREE_CHAT_MODELS
-
-            free_models: list[tuple[str, LiteLLMBaseModelSpec]] = FREE_CHAT_MODELS
-        else:
-            from llm_fallbacks.config import FREE_MODELS
-
-            free_models = FREE_MODELS
-
-        if model_type in {"chat", "strategic_chat", "fast_chat"}:
-            free_models = _extend_chat_models_with_runtime_candidates(free_models)
-
-        # Generate auto fallbacks using the same logic as auto mode
-        auto_fallbacks: list[str] = generate_auto_fallbacks_from_free_models(
-            free_models,
-            model_type,
-            clean_primary_model_id,
-            fast_token_limit,
-            smart_token_limit,
-            strategic_token_limit,
-            verbose_logging=False,
-        )
-
-        # Combine manual + auto fallbacks, removing duplicates while preserving order
-        combined_fallbacks: list[str] = manual_fallbacks.copy()
-        seen_combined: set[str] = set(manual_fallbacks)
-
-        for auto_fb in auto_fallbacks:
-            if auto_fb not in seen_combined:
-                combined_fallbacks.append(auto_fb)
-                seen_combined.add(auto_fb)
-
-        return combined_fallbacks[:MAX_FALLBACKS]
+        # Manual mode must stay explicit: do not append auto-generated fallbacks.
+        return manual_fallbacks[:MAX_FALLBACKS]
 
     # Auto-generate fallbacks
     try:
@@ -451,6 +600,17 @@ def initialize_fallback_providers_for_type(
 
             # Construct kwargs for the provider
             # Start with general llm_kwargs and add the specific model
+            if not _is_provider_available(provider_name):
+                continue
+
+            if provider_name == "litellm":
+                model_name = _normalize_litellm_model_identifier(model_name)
+                if not model_name:
+                    continue
+                litellm_provider_family = _infer_litellm_provider_from_model(model_name)
+                if litellm_provider_family and not _is_provider_available(litellm_provider_family):
+                    continue
+
             provider_kwargs: dict[str, Any] = llm_kwargs.copy()
             provider_kwargs["model"] = model_name
             provider_kwargs["verbose"] = verbose
