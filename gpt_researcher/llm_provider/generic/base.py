@@ -72,6 +72,76 @@ _SUPPORTED_PROVIDERS: set[str] = {
     "forge",
 }
 
+_LITELLM_PROVIDER_ALIASES: dict[str, str] = {
+    "google": "gemini",
+    "google_genai": "gemini",
+    "google-generativeai": "gemini",
+    "vertexai": "vertex_ai",
+    "together": "together_ai",
+}
+
+_LITELLM_KNOWN_PROVIDER_PREFIXES: set[str] = {
+    "anthropic",
+    "azure",
+    "bedrock",
+    "cohere",
+    "deepseek",
+    "gemini",
+    "groq",
+    "huggingface",
+    "ollama",
+    "openai",
+    "openrouter",
+    "replicate",
+    "together_ai",
+    "vertex_ai",
+    "xai",
+}
+
+_OPENROUTER_VENDOR_PREFIXES: set[str] = {
+    "anthropic",
+    "deepseek",
+    "google",
+    "meta",
+    "meta-llama",
+    "microsoft",
+    "mistralai",
+    "openai",
+    "qwen",
+}
+
+
+def _normalize_litellm_model_name(model_name: str, provider_hint: str | None = None) -> str | None:
+    normalized_model = (model_name or "").strip().lower()
+    if not normalized_model:
+        return None
+
+    hint = (provider_hint or "").strip().lower()
+    hint = _LITELLM_PROVIDER_ALIASES.get(hint, hint)
+
+    if "/" in normalized_model:
+        prefix = normalized_model.split("/", 1)[0]
+        if prefix in _LITELLM_KNOWN_PROVIDER_PREFIXES:
+            return normalized_model
+
+        if hint in _LITELLM_KNOWN_PROVIDER_PREFIXES:
+            if hint == "openrouter":
+                return f"openrouter/{normalized_model}"
+            return f"{hint}/{normalized_model}"
+
+        if prefix in _OPENROUTER_VENDOR_PREFIXES:
+            return f"openrouter/{normalized_model}"
+
+        return None
+
+    if hint in _LITELLM_KNOWN_PROVIDER_PREFIXES:
+        return f"{hint}/{normalized_model}"
+
+    if normalized_model.startswith("gemini"):
+        return f"gemini/{normalized_model}"
+
+    return None
+
 NO_SUPPORT_TEMPERATURE_MODELS: list[str] = [
     "deepseek/deepseek-reasoner",
     "o1-2024-12-17",
@@ -301,6 +371,29 @@ class GenericLLMProvider:
             except ModuleNotFoundError:
                 _check_pkg("langchain_community")
                 from langchain_community.chat_models.litellm import ChatLiteLLM
+
+            model_name: str | None = kwargs.get("model") or kwargs.get("model_name")
+            normalized_model_name = _normalize_litellm_model_name(model_name or "")
+            if not normalized_model_name:
+                raise ValueError(
+                    "Invalid LiteLLM model identifier. Use provider-qualified format like "
+                    "'gemini/gemini-2.0-flash', 'openai/gpt-4o-mini', or 'openrouter/meta-llama/llama-3.1-8b-instruct'."
+                )
+
+            kwargs["model"] = normalized_model_name
+            kwargs.pop("model_name", None)
+
+            litellm_provider_prefix = normalized_model_name.split("/", 1)[0]
+            if litellm_provider_prefix == "azure":
+                has_azure_endpoint = any(
+                    bool(os.environ.get(key))
+                    for key in ("AZURE_API_BASE", "AZURE_OPENAI_ENDPOINT", "AZURE_ENDPOINT")
+                )
+                if not has_azure_endpoint:
+                    raise ValueError(
+                        "Azure LiteLLM model selected but no Azure endpoint/base is configured. "
+                        "Set AZURE_API_BASE or AZURE_OPENAI_ENDPOINT, or use a non-Azure fallback model."
+                    )
 
             llm = ChatLiteLLM(**kwargs)
         elif provider == "gigachat":

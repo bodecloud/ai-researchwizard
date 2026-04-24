@@ -24,6 +24,7 @@ from gpt_researcher.llm_provider.generic.base import (
 
 from ..prompts import PromptFamily
 from .costs import estimate_llm_cost
+from .docker_secrets import resolve_docker_secrets
 from .llm_debug_logger import LLMDebugLogger, get_llm_debug_logger
 from .validators import Subtopics
 
@@ -71,6 +72,76 @@ def _get_configured_fallback_providers(
             return list(fallback_providers)
 
     return []
+
+
+def _build_emergency_fallback_providers(
+    config_obj: Any,
+    cfg: Any,
+    temperature: float | None,
+    max_tokens: int | None,
+    llm_kwargs: dict[str, Any] | None,
+) -> list[Any]:
+    """Build a minimal runtime fallback chain from available API keys.
+
+    This acts as a safety net when the requested primary provider cannot be
+    initialized and no explicit fallback list is configured.
+    """
+    candidates: list[tuple[str, str]] = []
+
+    if os.environ.get("OPENROUTER_API_KEY"):
+        candidates.append(("openrouter", os.environ.get("OPENROUTER_MODEL", "openai/gpt-4o-mini")))
+    if os.environ.get("OPENAI_API_KEY"):
+        candidates.append(("openai", os.environ.get("OPENAI_FALLBACK_MODEL", "gpt-4o-mini")))
+    if os.environ.get("GROQ_API_KEY"):
+        candidates.append(("groq", os.environ.get("GROQ_FALLBACK_MODEL", "llama-3.1-8b-instant")))
+
+    fallback_providers: list[Any] = []
+    for provider_name, model_name in candidates:
+        try:
+            fallback_provider = get_llm(
+                provider_name,
+                cfg=cfg,
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **(llm_kwargs or {}),
+            )
+            fallback_providers.append(fallback_provider)
+        except Exception as emergency_init_error:
+            logger.warning(
+                "[DEBUG-LLM] Emergency fallback provider init failed (%s/%s): %s: %s",
+                provider_name,
+                model_name,
+                emergency_init_error.__class__.__name__,
+                emergency_init_error,
+            )
+
+    return fallback_providers
+
+
+def _merge_fallback_providers(
+    preferred: list[Any],
+    secondary: list[Any],
+) -> list[Any]:
+    """Merge fallback providers while preserving order and removing duplicates."""
+    merged: list[Any] = []
+    seen: set[tuple[str, str]] = set()
+
+    for provider in [*preferred, *secondary]:
+        llm_obj = getattr(provider, "llm", None)
+        provider_key = getattr(llm_obj.__class__, "__module__", "unknown") if llm_obj else "unknown"
+        model_key = (
+            getattr(llm_obj, "model_name", None)
+            or getattr(llm_obj, "model", None)
+            or "unknown"
+        )
+        dedupe_key = (str(provider_key), str(model_key))
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
+        merged.append(provider)
+
+    return merged
 
 
 def estimate_token_count(
@@ -148,6 +219,8 @@ async def create_chat_completion(
     from gpt_researcher.skills.llm_visualizer import get_llm_visualizer
 
     # validate input
+    resolve_docker_secrets(verbose=False)
+
     if model is None:
         raise ValueError("Model cannot be None")
     if max_tokens is not None and max_tokens > 32000:
@@ -220,17 +293,6 @@ async def create_chat_completion(
 
         # Dynamic context limit determination
         config_obj: Config = cfg or Config()
-
-        # Initialize the provider to get capabilities
-        provider: GenericLLMProvider = get_llm(
-            llm_provider,
-            cfg=cfg,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            **(llm_kwargs or {}),
-        )
-
         from gpt_researcher.llm_provider.generic.fallback import (
             FallbackGenericLLMProvider,
         )
@@ -240,7 +302,48 @@ async def create_chat_completion(
             llm_provider,
             model,
         )
-        if configured_fallback_providers:
+        emergency_fallback_providers = _build_emergency_fallback_providers(
+            config_obj,
+            cfg,
+            temperature,
+            max_tokens,
+            llm_kwargs,
+        )
+        configured_fallback_providers = _merge_fallback_providers(
+            emergency_fallback_providers,
+            configured_fallback_providers,
+        )
+        # Initialize primary provider, but continue with fallbacks when primary init fails.
+        try:
+            provider: GenericLLMProvider = get_llm(
+                llm_provider,
+                cfg=cfg,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                **(llm_kwargs or {}),
+            )
+        except Exception as primary_init_error:
+            if not configured_fallback_providers:
+                raise
+
+            logger.warning(
+                "[DEBUG-LLM] Primary provider initialization failed (%s: %s). "
+                "Continuing with %s configured fallback provider(s).",
+                primary_init_error.__class__.__name__,
+                primary_init_error,
+                len(configured_fallback_providers),
+            )
+
+            primary_fallback = configured_fallback_providers[0]
+            provider = FallbackGenericLLMProvider(
+                primary_fallback.llm,
+                fallback_providers=configured_fallback_providers[1:],
+                chat_log=getattr(config_obj, "chat_log", None),
+                verbose=getattr(config_obj, "verbose", True),
+            )
+
+        if configured_fallback_providers and not isinstance(provider, FallbackGenericLLMProvider):
             provider = FallbackGenericLLMProvider(
                 provider.llm,
                 fallback_providers=configured_fallback_providers,

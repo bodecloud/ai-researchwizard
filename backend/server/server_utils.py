@@ -9,7 +9,10 @@ from typing import Awaitable, Dict, List, Any
 from fastapi.responses import JSONResponse, FileResponse
 from gpt_researcher.document.document import DocumentLoader
 from gpt_researcher import GPTResearcher
-from utils import write_md_to_pdf, write_md_to_word, write_text_to_md
+try:
+    from utils import write_md_to_pdf, write_md_to_word, write_text_to_md
+except ModuleNotFoundError:
+    from backend.utils import write_md_to_pdf, write_md_to_word, write_text_to_md
 from pathlib import Path
 from datetime import datetime
 from fastapi import HTTPException
@@ -285,6 +288,35 @@ def get_config_dict(
 
 def update_environment_variables(config: Dict[str, str]):
     for key, value in config.items():
+        if value is None:
+            continue
+
+        # If a Docker secret file is configured for this key, treat it as the source of truth.
+        file_key = f"{key}_FILE"
+        secret_path = os.getenv(file_key)
+        if secret_path and os.path.isfile(secret_path):
+            try:
+                secret_value = Path(secret_path).read_text(encoding="utf-8").strip()
+                if secret_value:
+                    os.environ[key] = secret_value
+                    continue
+            except OSError:
+                pass
+
+        # Do not overwrite existing resolved secrets with empty UI values.
+        if isinstance(value, str) and not value.strip():
+            if os.getenv(key):
+                continue
+
+            if secret_path and os.path.isfile(secret_path):
+                try:
+                    secret_value = Path(secret_path).read_text(encoding="utf-8").strip()
+                    if secret_value:
+                        os.environ[key] = secret_value
+                except OSError:
+                    pass
+            continue
+
         os.environ[key] = value
 
 
