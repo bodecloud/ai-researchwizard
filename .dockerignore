@@ -124,6 +124,7 @@ evals/
 
 # Package manager files (we copy these explicitly)
 package-lock.json
+!frontend/nextjs/package-lock.json
 yarn.lock
 poetry.lock
 Pipfile.lock

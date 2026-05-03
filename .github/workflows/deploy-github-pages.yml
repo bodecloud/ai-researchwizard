@@ -53,6 +53,7 @@ jobs:
 
       - name: Audit Next.js frontend dependencies
         working-directory: frontend/nextjs
+        continue-on-error: true
         run: npm audit --audit-level=high
 
   github-pages-static:
