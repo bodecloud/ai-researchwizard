@@ -913,10 +913,20 @@ const GPTResearcher = (() => {
     };
   }
 
+  const getConfiguredApiUrl = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const configuredUrl =
+      urlParams.get("GPTR_API_URL") ||
+      localStorage.getItem("GPTR_API_URL") ||
+      window.__GPT_RESEARCHER_CONFIG__?.apiUrl ||
+      window.location.origin;
+
+    return configuredUrl.replace(/\/+$/, "");
+  };
+
   const listenToSockEvents = () => {
-    const { protocol, host, pathname } = window.location
-    const ws_uri = `${protocol === 'https:' ? 'wss:' : 'ws:'
-      }//${host}${pathname}ws`
+    const apiUrl = getConfiguredApiUrl();
+    const ws_uri = `${apiUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:")}/ws`;
 
     // Set a timeout for connection - if it takes too long, stop the spinner
     connectionTimeout = setTimeout(() => {

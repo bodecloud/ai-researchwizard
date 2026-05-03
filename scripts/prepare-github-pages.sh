@@ -12,6 +12,13 @@ mkdir -p "${TARGET_DIR}"
 cp -R frontend/. "${TARGET_DIR}"
 rm -rf "${TARGET_DIR}/nextjs"
 
+API_URL="${GPTR_API_URL:-${NEXT_PUBLIC_GPTR_API_URL:-}}"
+cat > "${TARGET_DIR}/runtime-config.js" <<EOF
+window.__GPT_RESEARCHER_CONFIG__ = {
+  apiUrl: "${API_URL}"
+};
+EOF
+
 cat <<'EOF' > "${TARGET_DIR}/README.md"
 # GPT Researcher – Static Frontend Bundle
 
