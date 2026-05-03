@@ -7,6 +7,7 @@
   "deploy": {
     "runtime": "V2",
     "numReplicas": 1,
+    "startCommand": "/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf",
     "sleepApplication": true,
     "healthcheckPath": "/",
     "multiRegionConfig": {

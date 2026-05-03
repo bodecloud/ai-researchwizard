@@ -41,8 +41,8 @@ export default [
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "@next/next/no-html-link-for-pages": "off",
-      "react-hooks/exhaustive-deps": "off",
-      "react-hooks/rules-of-hooks": "off",
+      "react-hooks/exhaustive-deps": "warn",
+      "react-hooks/rules-of-hooks": "warn",
     },
   },
 ];
