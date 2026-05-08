@@ -2,18 +2,44 @@ import { Data } from '../types/data';
 import { consolidateSourceAndImageBlocks } from './consolidateBlocks';
 import { logSystem, logAgentWork, logResearchProgress, generateRequestId } from './terminalLogger';
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+type GroupedDataItem = {
+  type: string;
+  content?: string;
+  output?: string | { report?: string };
+  metadata?: JsonValue;
+  link?: string;
+  items?: Array<{ name?: string; url?: string } | Data>;
+  contentAndType?: string;
+};
+
+type WebSocketPayload = {
+  type?: string;
+  content?: string;
+  output?: string;
+  metadata?: JsonValue;
+  agent?: string;
+  agent_type?: string;
+  task?: string;
+  progress?: number;
+  link?: string;
+  [key: string]: JsonValue | string | number | boolean | null | undefined;
+};
+
 export const preprocessOrderedData = (data: Data[]) => {
-  let groupedData: any[] = [];
-  let currentAccordionGroup: any = null;
-  let currentSourceGroup: any = null;
-  let currentReportGroup: any = null;
-  let finalReportGroup: any = null;
+  let groupedData: GroupedDataItem[] = [];
+  let currentAccordionGroup: GroupedDataItem | null = null;
+  let currentSourceGroup: GroupedDataItem | null = null;
+  let currentReportGroup: GroupedDataItem | null = null;
+  let finalReportGroup: GroupedDataItem | null = null;
   let sourceBlockEncountered = false;
   let lastSubqueriesIndex = -1;
   const seenUrls = new Set<string>();
   // console.log('websocket data before its processed',data)
 
-  data.forEach((item: any) => {
+  data.forEach((item: Data) => {
     const { type, content, metadata, output, link } = item;
 
     if (type === 'question') {
@@ -142,7 +168,7 @@ export const addData = (
 };
 
 export const processWebSocketData = (
-  data: any,
+  data: WebSocketPayload,
   setOrderedData: React.Dispatch<React.SetStateAction<Data[]>>,
   setAnswer: React.Dispatch<React.SetStateAction<string>>
 ): Data[] | undefined => {

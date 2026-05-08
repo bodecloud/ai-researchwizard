@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { TouchEventHandler } from 'react';
 
 interface ImageModalProps {
-    imageSrc: any;
+    imageSrc: string;
     isOpen: boolean;
     onClose: () => void;
     onNext?: () => void;
@@ -61,8 +61,8 @@ export default function ImageModal({ imageSrc, isOpen, onClose, onNext, onPrev }
         <div
             className="fixed inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center p-4 overflow-auto"
             onClick={handleClose}
-            onTouchStart={handleTouchStart as unknown as TouchEventHandler<HTMLDivElement>}
-            onTouchEnd={handleTouchEnd as unknown as TouchEventHandler<HTMLDivElement>}
+            onTouchStart={handleTouchStart as TouchEventHandler<HTMLDivElement>}
+            onTouchEnd={handleTouchEnd as TouchEventHandler<HTMLDivElement>}
         >
             <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center">
                 <button

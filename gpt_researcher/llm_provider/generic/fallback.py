@@ -34,6 +34,25 @@ def _is_auth_failure(error: Exception) -> bool:
     return any(marker in error_msg for marker in auth_markers)
 
 
+def _is_openrouter_rate_limit_failure(error: Exception) -> bool:
+    """Return True when OpenRouter responds with key/rate limit errors (typically 403)."""
+    error_msg: str = str(error).lower()
+    return (
+        "openrouter" in error_msg
+        and "403" in error_msg
+        and (
+            "key limit exceeded" in error_msg
+            or "rate limit" in error_msg
+            or "total limit" in error_msg
+        )
+    )
+
+
+def _provider_base_url(provider_obj: Any) -> str:
+    llm_obj: Any = getattr(provider_obj, "llm", provider_obj)
+    return str(getattr(llm_obj, "openai_api_base", None) or getattr(llm_obj, "base_url", "") or "").strip().lower()
+
+
 def _provider_cache_key(provider_obj: Any) -> str:
     """Build a stable provider key for temporary runtime disablement."""
     llm_obj: Any = getattr(provider_obj, "llm", provider_obj)
@@ -51,6 +70,7 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
     """LLM Provider with fallback support."""
 
     _auth_failed_provider_cache_keys: set[str] = set()
+    _rate_limited_provider_bases: set[str] = set()
 
     def __init__(
         self,
@@ -297,7 +317,10 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
         primary_was_blacklisted = False
         
         # Only attempt primary provider if it hasn't been marked as failed
-        if primary_cache_key in self._auth_failed_provider_cache_keys:
+        primary_base_url: str = _provider_base_url(self)
+        primary_rate_limited = bool(primary_base_url and primary_base_url in self._rate_limited_provider_bases)
+
+        if primary_cache_key in self._auth_failed_provider_cache_keys or primary_rate_limited:
             # Primary provider already marked as failed, skip it and go to fallbacks
             logger.debug(
                 f"[FALLBACK-DEBUG] Primary provider {primary_model_name} already marked unavailable from previous auth failure. Skipping to fallbacks..."
@@ -349,6 +372,10 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
             if e is not None:
                 if _is_auth_failure(e):
                     self._auth_failed_provider_cache_keys.add(_provider_cache_key(self))
+                if _is_openrouter_rate_limit_failure(e):
+                    blocked_base = _provider_base_url(self)
+                    if blocked_base:
+                        self._rate_limited_provider_bases.add(blocked_base)
 
                 logger.warning(f"[FALLBACK-DEBUG] Primary provider failed: '{primary_model_name}'")
                 logger.warning(f"[FALLBACK-DEBUG] Primary error: '{e.__class__.__name__}: {e}...'")
@@ -404,10 +431,18 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
             for i, fallback_provider in enumerate(self.fallback_providers):
                 try:
                     fallback_cache_key: str = _provider_cache_key(fallback_provider)
+                    fallback_base_url: str = _provider_base_url(fallback_provider)
                     if fallback_cache_key in self._auth_failed_provider_cache_keys:
                         if self.verbose:
                             logger.debug(
                                 "[FALLBACK-DEBUG] Skipping fallback %s due to previous auth failure",
+                                fallback_cache_key,
+                            )
+                        continue
+                    if fallback_base_url and fallback_base_url in self._rate_limited_provider_bases:
+                        if self.verbose:
+                            logger.debug(
+                                "[FALLBACK-DEBUG] Skipping fallback %s due to provider-wide rate-limit blacklist",
                                 fallback_cache_key,
                             )
                         continue
@@ -485,6 +520,10 @@ class FallbackGenericLLMProvider(GenericLLMProvider):
                         self._auth_failed_provider_cache_keys.add(
                             _provider_cache_key(fallback_provider)
                         )
+                    if _is_openrouter_rate_limit_failure(fallback_error):
+                        blocked_base = _provider_base_url(fallback_provider)
+                        if blocked_base:
+                            self._rate_limited_provider_bases.add(blocked_base)
 
                     if self.verbose:
                         logger.warning(f"[FALLBACK-DEBUG] Fallback provider {i + 1} failed: '{fallback_model}' Fallback error: '{fallback_error.__class__.__name__}: {str(fallback_error)[:300] if len(str(fallback_error)) > 300 else str(fallback_error)}'")

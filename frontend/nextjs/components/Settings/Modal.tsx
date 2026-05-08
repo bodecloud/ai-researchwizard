@@ -62,7 +62,7 @@ const Modal: React.FC<ChatBoxProps> = ({ chatBoxSettings, setChatBoxSettings }) 
     setShowModal(false);
   };
 
-  const handleInputChange = (e: { target: { name: any; value: any; }; }) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setApiVariables(prevState => ({
       ...prevState,

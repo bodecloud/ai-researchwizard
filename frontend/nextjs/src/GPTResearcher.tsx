@@ -15,12 +15,21 @@ import InputArea from "../components/ResearchBlocks/elements/InputArea";
 import HumanFeedback from "../components/HumanFeedback";
 import LoadingDots from "../components/LoadingDots";
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type GPTLog = {
+  header: string;
+  text: string;
+  metadata?: JsonValue;
+  key: string;
+};
+
 export interface GPTResearcherProps {
   apiUrl?: string;
   apiKey?: string;
   defaultPrompt?: string;
-  onResultsChange?: (results: any) => void;
-  theme?: any;
+  onResultsChange?: (results: Data[]) => void;
+  theme?: Record<string, string | number | boolean | null | object>;
 }
 
 export const GPTResearcher = ({
@@ -52,7 +61,7 @@ export const GPTResearcher = ({
   const [orderedData, setOrderedData] = useState<Data[]>([]);
   const [showHumanFeedback, setShowHumanFeedback] = useState(false);
   const [questionForHuman, setQuestionForHuman] = useState<true | false>(false);
-  const [allLogs, setAllLogs] = useState<any[]>([]);
+  const [allLogs, setAllLogs] = useState<GPTLog[]>([]);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [isStopped, setIsStopped] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
@@ -225,9 +234,9 @@ export const GPTResearcher = ({
     const groupedData = preprocessOrderedData(orderedData);
     const statusReports = ["agent_generated", "starting_research", "planning_research", "error"];
     
-    const newLogs = groupedData.reduce((acc: any[], data) => {
+    const newLogs = groupedData.reduce((acc: GPTLog[], data) => {
       if (data.type === 'accordionBlock') {
-        const logs = data.items.map((item: any, subIndex: any) => ({
+        const logs = data.items.map((item: Data, subIndex: number) => ({
           header: item.content,
           text: item.output,
           metadata: item.metadata,

@@ -17,12 +17,17 @@ export enum LogCategory {
   SYSTEM = 'SYSTEM'
 }
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type LogPayload = JsonValue | { [key: string]: JsonValue };
+type ErrorLike = Error | { message?: string; [key: string]: JsonValue };
+
 interface LogEntry {
   timestamp: string;
   level: LogLevel;
   category: LogCategory;
   message: string;
-  data?: any;
+  data?: LogPayload;
   requestId?: string;
   sessionId?: string;
   stack?: string;
@@ -69,7 +74,7 @@ class TerminalLogger {
     return `${timestamp} ${level} ${category} ${sessionPrefix} ${requestPrefix} ${entry.message}`;
   }
 
-  private log(level: LogLevel, category: LogCategory, message: string, data?: any, requestId?: string): void {
+  private log(level: LogLevel, category: LogCategory, message: string, data?: LogPayload, requestId?: string): void {
     if (!this.isEnabled) return;
 
     const entry: LogEntry = {
@@ -116,17 +121,17 @@ class TerminalLogger {
   }
 
   // API Call Logging
-  public logApiCall(method: string, endpoint: string, payload?: any, requestId?: string): void {
+  public logApiCall(method: string, endpoint: string, payload?: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.API_CALL, `${method} ${endpoint}`, payload, requestId);
   }
 
-  public logApiResponse(endpoint: string, status: number, responseData?: any, requestId?: string): void {
+  public logApiResponse(endpoint: string, status: number, responseData?: LogPayload, requestId?: string): void {
     const level = status >= 400 ? LogLevel.ERROR : LogLevel.INFO;
     this.log(level, LogCategory.API_CALL, `Response ${status} from ${endpoint}`, responseData, requestId);
   }
 
-  public logApiError(endpoint: string, error: any, requestId?: string): void {
-    this.log(LogLevel.ERROR, LogCategory.API_CALL, `API Error at ${endpoint}: ${error.message}`, error, requestId);
+  public logApiError(endpoint: string, error: ErrorLike, requestId?: string): void {
+    this.log(LogLevel.ERROR, LogCategory.API_CALL, `API Error at ${endpoint}: ${error instanceof Error ? error.message : (error.message ?? 'Unknown error')}`, error, requestId);
   }
 
   // WebSocket Logging
@@ -138,13 +143,13 @@ class TerminalLogger {
     this.log(LogLevel.INFO, LogCategory.WEBSOCKET, `✅ WebSocket connected: ${url}`, undefined, requestId);
   }
 
-  public logWebSocketMessage(direction: 'SEND' | 'RECEIVE', message: any, requestId?: string): void {
+  public logWebSocketMessage(direction: 'SEND' | 'RECEIVE', message: LogPayload, requestId?: string): void {
     const icon = direction === 'SEND' ? '📤' : '📥';
     this.log(LogLevel.INFO, LogCategory.WEBSOCKET, `${icon} WebSocket ${direction}`, message, requestId);
   }
 
-  public logWebSocketError(error: any, requestId?: string): void {
-    this.log(LogLevel.ERROR, LogCategory.WEBSOCKET, `❌ WebSocket Error: ${error.message}`, error, requestId);
+  public logWebSocketError(error: ErrorLike, requestId?: string): void {
+    this.log(LogLevel.ERROR, LogCategory.WEBSOCKET, `❌ WebSocket Error: ${error instanceof Error ? error.message : (error.message ?? 'Unknown error')}`, error, requestId);
   }
 
   public logWebSocketClosed(code: number, reason: string, requestId?: string): void {
@@ -157,16 +162,16 @@ class TerminalLogger {
     this.log(LogLevel.INFO, LogCategory.AGENT_WORK, `🤖 ${agentType}: ${task}${progressText}`, undefined, requestId);
   }
 
-  public logAgentComplete(agentType: string, result: any, requestId?: string): void {
+  public logAgentComplete(agentType: string, result: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.AGENT_WORK, `✅ ${agentType} completed`, result, requestId);
   }
 
-  public logAgentError(agentType: string, error: any, requestId?: string): void {
-    this.log(LogLevel.ERROR, LogCategory.AGENT_WORK, `❌ ${agentType} error: ${error.message}`, error, requestId);
+  public logAgentError(agentType: string, error: ErrorLike, requestId?: string): void {
+    this.log(LogLevel.ERROR, LogCategory.AGENT_WORK, `❌ ${agentType} error: ${error instanceof Error ? error.message : (error.message ?? 'Unknown error')}`, error, requestId);
   }
 
   // Connection Logging
-  public logConnectionStatus(status: string, quality?: any, requestId?: string): void {
+  public logConnectionStatus(status: string, quality?: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.CONNECTION, `🔗 Connection status: ${status}`, quality, requestId);
   }
 
@@ -175,7 +180,7 @@ class TerminalLogger {
   }
 
   // Backend Query Logging
-  public logBackendQuery(query: string, parameters?: any, requestId?: string): void {
+  public logBackendQuery(query: string, parameters?: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.BACKEND_QUERY, `🔍 Backend Query: ${query}`, parameters, requestId);
   }
 
@@ -185,33 +190,33 @@ class TerminalLogger {
   }
 
   // Research Progress Logging
-  public logResearchProgress(stage: string, progress: number, details?: any, requestId?: string): void {
+  public logResearchProgress(stage: string, progress: number, details?: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.RESEARCH_PROGRESS, `📈 Research ${stage}: ${Math.round(progress)}%`, details, requestId);
   }
 
-  public logResearchComplete(totalTime: number, resultSummary: any, requestId?: string): void {
+  public logResearchComplete(totalTime: number, resultSummary: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.RESEARCH_PROGRESS, `🎉 Research completed in ${totalTime}ms`, resultSummary, requestId);
   }
 
   // User Interaction Logging
-  public logUserAction(action: string, data?: any, requestId?: string): void {
+  public logUserAction(action: string, data?: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.USER_INTERACTION, `👤 User ${action}`, data, requestId);
   }
 
   // System Logging
-  public logSystem(message: string, data?: any, requestId?: string): void {
+  public logSystem(message: string, data?: LogPayload, requestId?: string): void {
     this.log(LogLevel.INFO, LogCategory.SYSTEM, `⚙️ ${message}`, data, requestId);
   }
 
-  public logWarning(message: string, data?: any, requestId?: string): void {
+  public logWarning(message: string, data?: LogPayload, requestId?: string): void {
     this.log(LogLevel.WARN, LogCategory.SYSTEM, `⚠️ ${message}`, data, requestId);
   }
 
-  public logError(message: string, error?: any, requestId?: string): void {
+  public logError(message: string, error?: ErrorLike, requestId?: string): void {
     this.log(LogLevel.ERROR, LogCategory.SYSTEM, `❌ ${message}`, error, requestId);
   }
 
-  public logCritical(message: string, error?: any, requestId?: string): void {
+  public logCritical(message: string, error?: ErrorLike, requestId?: string): void {
     this.log(LogLevel.CRITICAL, LogCategory.SYSTEM, `🚨 CRITICAL: ${message}`, error, requestId);
   }
 
@@ -241,13 +246,13 @@ class TerminalLogger {
 export const terminalLogger = TerminalLogger.getInstance();
 
 // Export convenience functions
-export const logApiCall = (method: string, endpoint: string, payload?: any, requestId?: string) =>
+export const logApiCall = (method: string, endpoint: string, payload?: LogPayload, requestId?: string) =>
   terminalLogger.logApiCall(method, endpoint, payload, requestId);
 
-export const logApiResponse = (endpoint: string, status: number, responseData?: any, requestId?: string) =>
+export const logApiResponse = (endpoint: string, status: number, responseData?: LogPayload, requestId?: string) =>
   terminalLogger.logApiResponse(endpoint, status, responseData, requestId);
 
-export const logApiError = (endpoint: string, error: any, requestId?: string) =>
+export const logApiError = (endpoint: string, error: ErrorLike, requestId?: string) =>
   terminalLogger.logApiError(endpoint, error, requestId);
 
 export const logWebSocketConnection = (url: string, requestId?: string) =>
@@ -256,10 +261,10 @@ export const logWebSocketConnection = (url: string, requestId?: string) =>
 export const logWebSocketConnected = (url: string, requestId?: string) =>
   terminalLogger.logWebSocketConnected(url, requestId);
 
-export const logWebSocketMessage = (direction: 'SEND' | 'RECEIVE', message: any, requestId?: string) =>
+export const logWebSocketMessage = (direction: 'SEND' | 'RECEIVE', message: LogPayload, requestId?: string) =>
   terminalLogger.logWebSocketMessage(direction, message, requestId);
 
-export const logWebSocketError = (error: any, requestId?: string) =>
+export const logWebSocketError = (error: ErrorLike, requestId?: string) =>
   terminalLogger.logWebSocketError(error, requestId);
 
 export const logWebSocketClosed = (code: number, reason: string, requestId?: string) =>
@@ -268,43 +273,43 @@ export const logWebSocketClosed = (code: number, reason: string, requestId?: str
 export const logAgentWork = (agentType: string, task: string, progress?: number, requestId?: string) =>
   terminalLogger.logAgentWork(agentType, task, progress, requestId);
 
-export const logAgentComplete = (agentType: string, result: any, requestId?: string) =>
+export const logAgentComplete = (agentType: string, result: LogPayload, requestId?: string) =>
   terminalLogger.logAgentComplete(agentType, result, requestId);
 
-export const logAgentError = (agentType: string, error: any, requestId?: string) =>
+export const logAgentError = (agentType: string, error: ErrorLike, requestId?: string) =>
   terminalLogger.logAgentError(agentType, error, requestId);
 
-export const logConnectionStatus = (status: string, quality?: any, requestId?: string) =>
+export const logConnectionStatus = (status: string, quality?: LogPayload, requestId?: string) =>
   terminalLogger.logConnectionStatus(status, quality, requestId);
 
 export const logConnectionRetry = (attempt: number, maxAttempts: number, requestId?: string) =>
   terminalLogger.logConnectionRetry(attempt, maxAttempts, requestId);
 
-export const logBackendQuery = (query: string, parameters?: any, requestId?: string) =>
+export const logBackendQuery = (query: string, parameters?: LogPayload, requestId?: string) =>
   terminalLogger.logBackendQuery(query, parameters, requestId);
 
 export const logBackendResponse = (query: string, responseTime: number, resultCount?: number, requestId?: string) =>
   terminalLogger.logBackendResponse(query, responseTime, resultCount, requestId);
 
-export const logResearchProgress = (stage: string, progress: number, details?: any, requestId?: string) =>
+export const logResearchProgress = (stage: string, progress: number, details?: LogPayload, requestId?: string) =>
   terminalLogger.logResearchProgress(stage, progress, details, requestId);
 
-export const logResearchComplete = (totalTime: number, resultSummary: any, requestId?: string) =>
+export const logResearchComplete = (totalTime: number, resultSummary: LogPayload, requestId?: string) =>
   terminalLogger.logResearchComplete(totalTime, resultSummary, requestId);
 
-export const logUserAction = (action: string, data?: any, requestId?: string) =>
+export const logUserAction = (action: string, data?: LogPayload, requestId?: string) =>
   terminalLogger.logUserAction(action, data, requestId);
 
-export const logSystem = (message: string, data?: any, requestId?: string) =>
+export const logSystem = (message: string, data?: LogPayload, requestId?: string) =>
   terminalLogger.logSystem(message, data, requestId);
 
-export const logWarning = (message: string, data?: any, requestId?: string) =>
+export const logWarning = (message: string, data?: LogPayload, requestId?: string) =>
   terminalLogger.logWarning(message, data, requestId);
 
-export const logError = (message: string, error?: any, requestId?: string) =>
+export const logError = (message: string, error?: ErrorLike, requestId?: string) =>
   terminalLogger.logError(message, error, requestId);
 
-export const logCritical = (message: string, error?: any, requestId?: string) =>
+export const logCritical = (message: string, error?: ErrorLike, requestId?: string) =>
   terminalLogger.logCritical(message, error, requestId);
 
 export const generateRequestId = () => terminalLogger.generateRequestId();

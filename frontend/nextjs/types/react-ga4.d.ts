@@ -1,7 +1,10 @@
 declare module 'react-ga4' {
+    type JsonPrimitive = string | number | boolean | null;
+    type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
     export interface InitOptions {
-      gaOptions?: any;
-      gtagOptions?: any;
+      gaOptions?: { [key: string]: JsonValue };
+      gtagOptions?: { [key: string]: JsonValue };
       testMode?: boolean;
     }
   
@@ -17,7 +20,7 @@ declare module 'react-ga4' {
       value?: number;
       nonInteraction?: boolean;
       transport?: 'beacon' | 'xhr' | 'image';
-      [key: string]: any;
+      [key: string]: JsonValue | undefined;
     }): void;
   
     // Add other methods as needed

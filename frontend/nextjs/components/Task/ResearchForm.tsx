@@ -58,32 +58,32 @@ export default function ResearchForm({
     setDomains(domains.filter(domain => domain.value !== domainToRemove));
   };
 
-  const onFormChange = (e: { target: { name: any; value: any } }) => {
+  const onFormChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setChatBoxSettings((prevSettings: any) => ({
+    setChatBoxSettings((prevSettings) => ({
       ...prevSettings,
       [name]: value,
     }));
   };
 
-  const onToneChange = (e: { target: { value: any } }) => {
+  const onToneChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { value } = e.target;
-    setChatBoxSettings((prevSettings: any) => ({
+    setChatBoxSettings((prevSettings) => ({
       ...prevSettings,
       tone: value,
     }));
   };
 
-  const onLayoutChange = (e: { target: { value: any } }) => {
+  const onLayoutChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { value } = e.target;
-    setChatBoxSettings((prevSettings: any) => ({
+    setChatBoxSettings((prevSettings) => ({
       ...prevSettings,
       layoutType: value,
     }));
   };
 
   const onMCPChange = (enabled: boolean, configs: MCPConfig[]) => {
-    setChatBoxSettings((prevSettings: any) => ({
+    setChatBoxSettings((prevSettings) => ({
       ...prevSettings,
       mcp_enabled: enabled,
       mcp_configs: configs,

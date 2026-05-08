@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { Data, ChatBoxSettings, QuestionData } from '../types/data';
 import { getHost, HostResult } from '../helpers/getHost';
 
+type DomainFilterEntry = { value: string };
+
 export const useWebSocket = (
   setOrderedData: React.Dispatch<React.SetStateAction<Data[]>>,
   setAnswer: React.Dispatch<React.SetStateAction<string>>, 
@@ -67,7 +69,7 @@ export const useWebSocket = (
         console.log('WebSocket connection opened');
         
         const domainFilters = JSON.parse(localStorage.getItem('domainFilters') || '[]');
-        const domains = domainFilters ? domainFilters.map((domain: any) => domain.value) : [];
+        const domains = domainFilters ? domainFilters.map((domain: DomainFilterEntry) => domain.value) : [];
         const { report_type, report_source, tone, mcp_enabled, mcp_configs, mcp_strategy } = chatBoxSettings;
         
         // Start a new research

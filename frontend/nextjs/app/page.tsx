@@ -25,6 +25,13 @@ import { getAppropriateLayout } from "@/utils/getLayout";
 import MobileHomeScreen from "@/components/mobile/MobileHomeScreen";
 import MobileResearchContent from "@/components/mobile/MobileResearchContent";
 
+type PageLog = {
+  header: string;
+  text: string;
+  metadata?: string | number | boolean | null | object | Array<string | number | boolean | null | object>;
+  key: string;
+};
+
 export default function Home() {
   const router = useRouter();
   const [promptValue, setPromptValue] = useState("");
@@ -68,7 +75,7 @@ export default function Home() {
   const [orderedData, setOrderedData] = useState<Data[]>([]);
   const [showHumanFeedback, setShowHumanFeedback] = useState(false);
   const [questionForHuman, setQuestionForHuman] = useState<true | false>(false);
-  const [allLogs, setAllLogs] = useState<any[]>([]);
+  const [allLogs, setAllLogs] = useState<PageLog[]>([]);
   const [isStopped, setIsStopped] = useState(false);
   const mainContentRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -816,10 +823,10 @@ export default function Home() {
     const groupedData = preprocessOrderedData(orderedData);
     const statusReports = ["agent_generated", "starting_research", "planning_research", "error"];
     
-    const newLogs = groupedData.reduce((acc: any[], data) => {
+    const newLogs = groupedData.reduce((acc: PageLog[], data) => {
       // Process accordion blocks (grouped data)
       if (data.type === 'accordionBlock') {
-        const logs = data.items.map((item: any, subIndex: any) => ({
+        const logs = data.items.map((item: Data, subIndex: number) => ({
           header: item.content,
           text: item.output,
           metadata: item.metadata,

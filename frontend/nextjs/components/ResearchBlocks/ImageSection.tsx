@@ -3,7 +3,7 @@ import React, { memo } from 'react';
 import ImagesAlbum from '../Images/ImagesAlbum';
 
 interface ImageSectionProps {
-  metadata: any;
+  metadata: Array<{ image_url?: string; [key: string]: string | number | boolean | null | object }>;
 }
 
 const ImageSection = ({ metadata }: ImageSectionProps) => {

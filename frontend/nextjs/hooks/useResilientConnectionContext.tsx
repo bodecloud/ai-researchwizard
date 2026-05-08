@@ -2,6 +2,23 @@ import React, { createContext, useContext, useEffect, useCallback, useMemo } fro
 import { Data, ChatBoxSettings } from '../types/data';
 import { useResilientConnection, ResilientConnectionState, ConnectionStatus } from './useResilientConnection';
 
+type QueueMetrics = { queued: number; active: number; total: number };
+type RuntimeConfig = {
+  maxRetries?: number;
+  baseRetryDelay?: number;
+  maxRetryDelay?: number;
+  retryBackoffFactor?: number;
+  jitterRange?: number;
+  connectionTimeout?: number;
+  heartbeatInterval?: number;
+  healthCheckInterval?: number;
+  silentRetryThreshold?: number;
+  contextualFeedbackDelay?: number;
+  sanitizeErrors?: boolean;
+  logLevel?: "none" | "errors" | "warnings" | "info" | "debug";
+  enableMetrics?: boolean;
+};
+
 interface ResilientConnectionContextType {
   // Connection state
   connectionState: ResilientConnectionState;
@@ -22,11 +39,11 @@ interface ResilientConnectionContextType {
   shouldShowStatus: () => boolean;
 
   // Metrics (optional)
-  getMetrics?: () => any;
-  getQueueStatus: () => { queued: number; active: number; total: number };
+  getMetrics?: () => Record<string, string | number | boolean | null | object>;
+  getQueueStatus: () => QueueMetrics;
 
   // Configuration
-  updateConfig: (config: Partial<any>) => void;
+  updateConfig: (config: Partial<RuntimeConfig>) => void;
 }
 
 const ResilientConnectionContext = createContext<ResilientConnectionContextType | undefined>(undefined);
@@ -216,7 +233,7 @@ export const ResilientConnectionProvider: React.FC<ResilientConnectionProviderPr
     initializeConnection();
   }, [initializeConnection]);
 
-  const updateConfig = useCallback((newConfig: Partial<any>) => {
+  const updateConfig = useCallback((newConfig: Partial<RuntimeConfig>) => {
     // This would typically update the configuration
     // For now, we log it as the hook doesn't support dynamic config updates
     console.log('Config update requested:', newConfig);

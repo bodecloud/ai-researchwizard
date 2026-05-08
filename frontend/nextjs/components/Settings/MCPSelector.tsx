@@ -5,6 +5,7 @@ interface MCPConfig {
   command: string;
   args: string[];
   env: Record<string, string>;
+  connection_url?: string;
 }
 
 interface MCPSelectorProps {
@@ -63,7 +64,7 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
       }
 
       const errors: string[] = [];
-      parsed.forEach((server: any, index: number) => {
+      parsed.forEach((server: MCPConfig, index: number) => {
         if (!server.name) {
           errors.push(`Server ${index + 1}: missing name`);
         }
@@ -82,10 +83,10 @@ const MCPSelector: React.FC<MCPSelectorProps> = ({
         serverCount: parsed.length
       });
       return true;
-    } catch (error: any) {
+    } catch (error) {
       setValidationStatus({
         isValid: false,
-        message: `Invalid JSON: ${error.message}`
+        message: `Invalid JSON: ${error instanceof Error ? error.message : String(error)}`
       });
       return false;
     }

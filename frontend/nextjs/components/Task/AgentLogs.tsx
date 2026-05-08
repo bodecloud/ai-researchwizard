@@ -1,6 +1,12 @@
-export default function AgentLogs({agentLogs}:any){  
-  const renderAgentLogs = (agentLogs:any)=>{
-    return agentLogs && agentLogs.map((agentLog:any, index:number)=>{
+type AgentLogEntry = { output: string };
+
+interface AgentLogsProps {
+  agentLogs: AgentLogEntry[];
+}
+
+export default function AgentLogs({ agentLogs }: AgentLogsProps) {
+  const renderAgentLogs = (entries: AgentLogEntry[]) => {
+    return entries && entries.map((agentLog: AgentLogEntry, index: number) => {
       return (<div key={index}>{agentLog.output}</div>)
     })
   }

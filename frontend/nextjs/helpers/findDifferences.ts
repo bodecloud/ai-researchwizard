@@ -1,14 +1,15 @@
-type Value = string | number | boolean | null | undefined | object | Value[]; // Possible value types
+type Value = string | number | boolean | null | undefined | { [key: string]: Value } | Value[]; // Possible value types
 type Changes = { [key: string]: { before: Value; after: Value } | Changes }; // Recursive changes type
+type ValueRecord = Record<string, Value>;
 
-function findDifferences<T extends Record<string, any>>(obj1: T, obj2: T): Changes {
+function findDifferences<T extends ValueRecord>(obj1: T, obj2: T): Changes {
     // Helper function to check if a value is an object (excluding arrays)
-    function isObject(obj: any): obj is Record<string, any> {
+    function isObject(obj: Value): obj is ValueRecord {
         return obj && typeof obj === 'object' && !Array.isArray(obj);
     }
 
     // Recursive function to compare two objects and return the differences
-    function compareObjects(o1: Record<string, any>, o2: Record<string, any>): Changes {
+    function compareObjects(o1: ValueRecord, o2: ValueRecord): Changes {
         const changes: Changes = {};
 
         // Iterate over keys in the first object (o1)

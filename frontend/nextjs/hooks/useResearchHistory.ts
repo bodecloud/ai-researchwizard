@@ -260,8 +260,8 @@ export const useResearchHistory = () => {
       // Also update localStorage as fallback
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const updatedHistory = parsedHistory.map((item: any) => 
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        const updatedHistory = parsedHistory.map((item) =>
           item.id === id ? { ...item, answer, orderedData, timestamp: Date.now() } : item
         );
         localStorage.setItem('researchHistory', JSON.stringify(updatedHistory));
@@ -281,8 +281,8 @@ export const useResearchHistory = () => {
       // Update localStorage
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const updatedHistory = parsedHistory.map((item: any) => 
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        const updatedHistory = parsedHistory.map((item) =>
           item.id === id ? { ...item, answer, orderedData, timestamp: Date.now() } : item
         );
         localStorage.setItem('researchHistory', JSON.stringify(updatedHistory));
@@ -303,8 +303,8 @@ export const useResearchHistory = () => {
         // If not found on server, try localStorage
         const localHistory = localStorage.getItem('researchHistory');
         if (localHistory) {
-          const parsedHistory = JSON.parse(localHistory);
-          return parsedHistory.find((item: any) => item.id === id) || null;
+          const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+          return parsedHistory.find((item) => item.id === id) || null;
         }
       } else {
         throw new Error(`API error: ${response.status}`);
@@ -315,8 +315,8 @@ export const useResearchHistory = () => {
       // Try localStorage as fallback
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        return parsedHistory.find((item: any) => item.id === id) || null;
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        return parsedHistory.find((item) => item.id === id) || null;
       }
       
       return null;
@@ -340,8 +340,8 @@ export const useResearchHistory = () => {
       // Also update localStorage
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const filteredHistory = parsedHistory.filter((item: any) => item.id !== id);
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        const filteredHistory = parsedHistory.filter((item) => item.id !== id);
         localStorage.setItem('researchHistory', JSON.stringify(filteredHistory));
       }
       
@@ -355,8 +355,8 @@ export const useResearchHistory = () => {
       // Update localStorage
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const filteredHistory = parsedHistory.filter((item: any) => item.id !== id);
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        const filteredHistory = parsedHistory.filter((item) => item.id !== id);
         localStorage.setItem('researchHistory', JSON.stringify(filteredHistory));
       }
       
@@ -393,8 +393,8 @@ export const useResearchHistory = () => {
       // Also update localStorage
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const updatedHistory = parsedHistory.map((item: any) => {
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        const updatedHistory = parsedHistory.map((item) => {
           if (item.id === id) {
             const chatMessages = item.chatMessages || [];
             return { ...item, chatMessages: [...chatMessages, message] };
@@ -422,8 +422,8 @@ export const useResearchHistory = () => {
       // Update localStorage
       const localHistory = localStorage.getItem('researchHistory');
       if (localHistory) {
-        const parsedHistory = JSON.parse(localHistory);
-        const updatedHistory = parsedHistory.map((item: any) => {
+        const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
+        const updatedHistory = parsedHistory.map((item) => {
           if (item.id === id) {
             const chatMessages = item.chatMessages || [];
             return { ...item, chatMessages: [...chatMessages, message] };
@@ -454,10 +454,10 @@ export const useResearchHistory = () => {
     const localHistory = localStorage.getItem('researchHistory');
     if (localHistory) {
       try {
-        const parsedHistory = JSON.parse(localHistory);
+          const parsedHistory = JSON.parse(localHistory) as ResearchHistoryItem[];
         // Check if parsedHistory is an array
         if (Array.isArray(parsedHistory)) {
-          const research = parsedHistory.find((item: any) => item.id === id);
+          const research = parsedHistory.find((item) => item.id === id);
           if (research && research.chatMessages) {
             return research.chatMessages;
           }

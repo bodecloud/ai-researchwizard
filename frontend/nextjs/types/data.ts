@@ -2,6 +2,10 @@ export interface BaseData {
   type: string;
 }
 
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+export type JsonObject = { [key: string]: JsonValue };
+
 export interface BasicData extends BaseData {
   type: 'basic';
   content: string;
@@ -26,7 +30,7 @@ export interface QuestionData extends BaseData {
 export interface ChatData extends BaseData {
   type: 'chat';
   content: string;
-  metadata?: any; // For storing search results and other contextual information
+  metadata?: JsonObject | JsonValue[]; // For storing search results and other contextual information
 }
 
 export type Data = BasicData | LanggraphButtonData | DifferencesData | QuestionData | ChatData;
@@ -58,7 +62,7 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp?: number;
-  metadata?: any; // For storing search results and other contextual information
+  metadata?: JsonObject | JsonValue[]; // For storing search results and other contextual information
 }
 
 export interface ResearchHistoryItem {
@@ -66,6 +70,8 @@ export interface ResearchHistoryItem {
   question: string;
   answer: string;
   timestamp: number;
+  updated_at?: number;
+  created_at?: number;
   orderedData: Data[];
   chatMessages?: ChatMessage[];
 } 

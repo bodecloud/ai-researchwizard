@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { Toaster } from "react-hot-toast";
+import { Toaster, type ToastOptions } from "react-hot-toast";
 import Image from "next/image";
 import { ChatBoxSettings } from "@/types/data";
 import { useResearchHistoryContext } from "@/hooks/ResearchHistoryContext";
@@ -15,7 +15,7 @@ interface MobileLayoutProps {
   chatBoxSettings: ChatBoxSettings;
   setChatBoxSettings: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
   mainContentRef?: React.RefObject<HTMLDivElement>;
-  toastOptions?: Record<string, any>;
+  toastOptions?: ToastOptions;
   toggleSidebar?: () => void;
 }
 
@@ -173,7 +173,7 @@ export default function MobileLayout({
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      {formatTimestamp(item.timestamp || (item as any).updated_at || (item as any).created_at)}
+                      {formatTimestamp(item.timestamp || item.updated_at || item.created_at)}
                     </p>
                   </button>
                 ))}
