@@ -2,7 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { markdownToHtml } from '../../helpers/markdownHelper';
 import '../../styles/markdown.css';
 
-export default function Report({report}:any) {
+interface ReportProps {
+    report: string;
+}
+
+export default function Report({ report }: ReportProps) {
     const [htmlContent, setHtmlContent] = useState('');
 
     useEffect(() => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import type { ToastOptions } from 'react-hot-toast';
 import ResearchPageLayout from '@/components/layouts/ResearchPageLayout';
 import CopilotLayout from '@/components/layouts/CopilotLayout';
 import MobileLayout from '@/components/layouts/MobileLayout';
@@ -16,7 +17,7 @@ interface LayoutProps {
   mainContentRef?: React.RefObject<HTMLDivElement>;
   showScrollButton?: boolean;
   onScrollToBottom?: () => void;
-  toastOptions?: Record<string, any>;
+  toastOptions?: ToastOptions;
   toggleSidebar?: () => void;
   isProcessingChat?: boolean;
 }

@@ -23,6 +23,18 @@ interface MobileChatPanelProps {
   className?: string;
 }
 
+type SourceEntry = { title?: string; url: string };
+type ToolCall = {
+  tool?: string;
+  search_metadata?: {
+    sources?: SourceEntry[];
+  };
+};
+type ChatMetadata = {
+  sources?: SourceEntry[];
+  tool_calls?: ToolCall[];
+};
+
 // Memoize the chat message component to prevent re-rendering all messages
 const ChatMessage = memo(({ 
   type, 
@@ -33,7 +45,7 @@ const ChatMessage = memo(({
   type: string, 
   content: string, 
   html: string, 
-  metadata?: any 
+  metadata?: ChatMetadata
 }) => {
   if (type === 'question') {
     // User question - now with teal/turquoise color to match theme
@@ -54,20 +66,20 @@ const ChatMessage = memo(({
   } else if (type === 'chat') {
     // Check if we have sources from a web search tool call
     const hasWebSources = metadata?.tool_calls?.some(
-      (tool: any) => tool.tool === 'quick_search' && tool.search_metadata?.sources?.length > 0
+      (tool: ToolCall) => tool.tool === 'quick_search' && tool.search_metadata?.sources?.length > 0
     );
     
     // Get all sources from web searches
     const webSources = metadata?.tool_calls
-      ?.filter((tool: any) => tool.tool === 'quick_search')
-      .flatMap((tool: any) => tool.search_metadata?.sources || [])
-      .map((source: any) => ({
+      ?.filter((tool: ToolCall) => tool.tool === 'quick_search')
+      .flatMap((tool: ToolCall) => tool.search_metadata?.sources || [])
+      .map((source: SourceEntry) => ({
         name: source.title,
         url: source.url
       })) || [];
     
     // Also check for direct sources in metadata (for backward compatibility)
-    const directSources = metadata?.sources?.map((source: any) => ({
+    const directSources = metadata?.sources?.map((source: SourceEntry) => ({
       name: source.title || source.url,
       url: source.url
     })) || [];
@@ -101,7 +113,7 @@ const ChatMessage = memo(({
                     </svg>
                   </summary>
                   <ul className="mt-1 ml-4 space-y-1 list-disc">
-                    {metadata.sources.map((source: any, i: number) => (
+                    {metadata.sources.map((source: SourceEntry, i: number) => (
                       <li key={i}>
                         <a 
                           href={source.url} 
@@ -203,7 +215,7 @@ const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const [showPreferences, setShowPreferences] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const [renderedMessages, setRenderedMessages] = useState<{id: string, content: string, html: string, type: string, metadata?: any}[]>([]);
+  const [renderedMessages, setRenderedMessages] = useState<{id: string, content: string, html: string, type: string, metadata?: ChatMetadata}[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const prevOrderedDataLengthRef = useRef(0);
   

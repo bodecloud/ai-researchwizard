@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Toaster } from "react-hot-toast";
+import { Toaster, type ToastOptions } from "react-hot-toast";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import { ChatBoxSettings } from "@/types/data";
@@ -15,7 +15,7 @@ interface CopilotLayoutProps {
   chatBoxSettings: ChatBoxSettings;
   setChatBoxSettings: React.Dispatch<React.SetStateAction<ChatBoxSettings>>;
   mainContentRef?: React.RefObject<HTMLDivElement>;
-  toastOptions?: Record<string, any>;
+  toastOptions?: ToastOptions;
   toggleSidebar?: () => void;
 }
 

@@ -69,4 +69,5 @@ markdown>=3.5.1
 
 # Fallback & Provider Extensions
 llm-fallbacks>=0.1.0
-langchain-netmind>=0.1.0
+# langchain-netmind pins langchain-core<0.4 and conflicts with LangChain v1 above.
+# Install separately if needed: pip install langchain-netmind --no-deps

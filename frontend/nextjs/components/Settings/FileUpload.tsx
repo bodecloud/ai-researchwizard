@@ -4,7 +4,7 @@ import { useDropzone } from 'react-dropzone';
 import { getHost, HostResult } from "@/helpers/getHost"
 
 const FileUpload = () => {
-  const [files, setFiles] = useState([]);
+  const [files, setFiles] = useState<string[]>([]);
   const hostResult: HostResult = getHost();
   const host = `${hostResult.isSecure ? 'https://' : 'http://'}${hostResult.cleanHost}`;
 
@@ -21,7 +21,7 @@ const FileUpload = () => {
     fetchFiles();
   }, [fetchFiles]);
 
-  const onDrop = async (acceptedFiles: any[]) => {
+  const onDrop = async (acceptedFiles: File[]) => {
     const formData = new FormData();
     acceptedFiles.forEach(file => {
       formData.append('file', file);
@@ -39,7 +39,7 @@ const FileUpload = () => {
     }
   };
 
-  const deleteFile = async (filename: never) => {
+  const deleteFile = async (filename: string) => {
     try {
       await axios.delete(`${host}/files/${filename}`);
       fetchFiles();

@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     
     const data = await response.json();
     return NextResponse.json(data, { status: response.status });
-  } catch (error: any) {
+  } catch (error) {
     console.error('POST /api/chat - Error proxying to backend:', error);
     return NextResponse.json(
       { error: 'Failed to connect to backend service' },

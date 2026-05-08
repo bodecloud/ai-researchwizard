@@ -1,11 +1,21 @@
-export const consolidateSourceAndImageBlocks = (groupedData: any[]) => {
+type SourceItem = { name?: string; url?: string };
+type ImageMetadata = { image_url?: string; [key: string]: string | number | boolean | null | object | Array<string | number | boolean | null | object> };
+
+type GroupedItem = {
+  type: string;
+  items?: SourceItem[];
+  metadata?: ImageMetadata[];
+  [key: string]: string | number | boolean | null | object | Array<string | number | boolean | null | object> | undefined;
+};
+
+export const consolidateSourceAndImageBlocks = (groupedData: GroupedItem[]) => {
   // Consolidate sourceBlocks
   const consolidatedSourceBlock = {
     type: 'sourceBlock',
     items: groupedData
       .filter(item => item.type === 'sourceBlock')
       .flatMap(block => block.items || [])
-      .filter((item, index, self) => 
+      .filter((item, index, self) =>
         index === self.findIndex(t => t.url === item.url)
       )
   };

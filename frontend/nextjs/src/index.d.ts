@@ -5,8 +5,8 @@ declare module 'gpt-researcher-ui' {
     apiUrl?: string;
     apiKey?: string;
     defaultPrompt?: string;
-    onResultsChange?: (results: any) => void;
-    theme?: any;
+    onResultsChange?: (results: Array<{ type: string; content: string }>) => void;
+    theme?: Record<string, string | number | boolean | null | object>;
   }
 
   export const GPTResearcher: React.FC<GPTResearcherProps>;

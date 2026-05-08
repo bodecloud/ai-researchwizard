@@ -3,14 +3,14 @@ from __future__ import annotations
 from gpt_researcher.config.variables.base import BaseConfig
 
 DEFAULT_CONFIG: BaseConfig = {
-    "RETRIEVER": "tavily",
+    "RETRIEVER": "duckduckgo",
     "EMBEDDING": "openai:text-embedding-3-small",
     "EMBEDDING_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "SIMILARITY_THRESHOLD": 0.42,
-    # Prefer explicit OpenRouter free-tier models as defaults.
-    "FAST_LLM": "openrouter:mistralai/mistral-small-3.1-24b-instruct:free",
-    "SMART_LLM": "openrouter:google/gemini-2.0-flash-exp:free",
-    "STRATEGIC_LLM": "openrouter:google/gemini-2.0-flash-exp:free",
+    # Prefer OpenRouter auto-routing by default when no env override is provided.
+    "FAST_LLM": "openrouter:openrouter/auto",
+    "SMART_LLM": "openrouter:openrouter/auto",
+    "STRATEGIC_LLM": "openrouter:openrouter/auto",
     "FAST_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "SMART_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models
     "STRATEGIC_LLM_FALLBACKS": "auto",  # Comma-separated list of model names or "auto" for automatic free models

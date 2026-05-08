@@ -2,6 +2,25 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { getHost, HostResult } from "../helpers/getHost";
 import { Data, ChatBoxSettings } from "../types/data";
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+
+type PendingRequest = {
+  promptValue: string;
+  chatBoxSettings: ChatBoxSettings;
+};
+
+type ConnectionMessage = {
+  type?: string;
+  content?: string;
+  output?: string;
+  metadata?: JsonValue;
+  agent?: string;
+  agent_type?: string;
+  task?: string;
+  progress?: number;
+};
+
 export type ConnectionStatus =
   | "idle"
   | "preparing"
@@ -60,8 +79,8 @@ export const useConnectionManager = (
   const heartbeatInterval = useRef<number>();
   const retryTimeout = useRef<number>();
   const connectionTimeout = useRef<number>();
-  const currentRequest = useRef<any>(null);
-  const messageBuffer = useRef<any[]>([]);
+  const currentRequest = useRef<PendingRequest | null>(null);
+  const messageBuffer = useRef<string[]>([]);
   const isIntentionalClose = useRef(false);
   const retryCount = useRef(0);
   const lastSuccessfulConnection = useRef<number>(Date.now());
@@ -192,7 +211,7 @@ export const useConnectionManager = (
   }, [finalConfig.maxRetries, updateResearchState, getRetryDelay, setLoading]);
 
   // Process incoming WebSocket messages
-  const processMessage = useCallback((data: any) => {
+  const processMessage = useCallback((data: ConnectionMessage) => {
     // Update progress based on message type
     let progress = researchState.progress;
     let currentTask = researchState.currentTask;
@@ -279,10 +298,19 @@ export const useConnectionManager = (
         const storedConfig = localStorage.getItem("apiVariables");
         const apiVariables = storedConfig ? JSON.parse(storedConfig) : {};
         const domainFilters = JSON.parse(localStorage.getItem("domainFilters") || "[]");
-        const domains = domainFilters ? domainFilters.map((domain: any) => domain.value) : [];
+        const domains = domainFilters ? domainFilters.map((domain: { value: string }) => domain.value) : [];
         const { report_type, report_source, tone, mcp_enabled, mcp_configs } = chatBoxSettings;
 
-        const requestData: any = {
+        const requestData: {
+          task: string;
+          report_type: string;
+          report_source: string;
+          tone: string;
+          query_domains: string[];
+          mcp_enabled?: boolean;
+          mcp_strategy?: string;
+          mcp_configs?: object[];
+        } = {
           task: promptValue,
           report_type,
           report_source,

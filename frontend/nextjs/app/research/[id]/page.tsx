@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useResearchHistoryContext } from "@/hooks/ResearchHistoryContext";
 import { preprocessOrderedData } from "@/utils/dataProcessing";
-import { ChatBoxSettings, Data, ChatData, ChatMessage, QuestionData } from "@/types/data";
+import { ChatBoxSettings, Data, ChatData, ChatMessage, QuestionData, ResearchHistoryItem } from "@/types/data";
 import { toast } from "react-hot-toast";
 import { getAppropriateLayout } from "@/utils/getLayout";
 
@@ -19,6 +19,13 @@ import ResearchSidebar from "@/components/ResearchSidebar";
 // Import mobile components
 import MobileResearchContent from "@/components/mobile/MobileResearchContent";
 
+type DisplayLog = {
+  header: string;
+  text: string;
+  metadata: Data["metadata"];
+  key: string;
+};
+
 export default function ResearchPage({ params }: { params: { id: string } }) {
   const router = useRouter();
   const { id } = params;
@@ -27,7 +34,7 @@ export default function ResearchPage({ params }: { params: { id: string } }) {
   const [answer, setAnswer] = useState("");
   const [chatPromptValue, setChatPromptValue] = useState("");
   const [orderedData, setOrderedData] = useState<Data[]>([]);
-  const [allLogs, setAllLogs] = useState<any[]>([]);
+  const [allLogs, setAllLogs] = useState<DisplayLog[]>([]);
   const [isStopped, setIsStopped] = useState(false);
   const [currentResearchId, setCurrentResearchId] = useState<string | null>(null);
   const [isProcessingChat, setIsProcessingChat] = useState(false);
@@ -119,7 +126,7 @@ export default function ResearchPage({ params }: { params: { id: string } }) {
       if (storedHistory) {
         try {
           const localHistory = JSON.parse(storedHistory);
-          localItem = localHistory.find((item: any) => item.id === id);
+          localItem = (localHistory as ResearchHistoryItem[]).find((item) => item.id === id);
           
           if (localItem) {
             console.log(`Found research ${id} in localStorage!`);
@@ -269,10 +276,10 @@ export default function ResearchPage({ params }: { params: { id: string } }) {
     const groupedData = preprocessOrderedData(orderedData);
     const statusReports = ["agent_generated", "starting_research", "planning_research", "error"];
     
-    const newLogs = groupedData.reduce((acc: any[], data) => {
+    const newLogs = groupedData.reduce((acc: DisplayLog[], data) => {
       // Process accordion blocks (grouped data)
       if (data.type === 'accordionBlock') {
-        const logs = data.items.map((item: any, subIndex: any) => ({
+        const logs = data.items.map((item: Data, subIndex: number) => ({
           header: item.content,
           text: item.output,
           metadata: item.metadata,

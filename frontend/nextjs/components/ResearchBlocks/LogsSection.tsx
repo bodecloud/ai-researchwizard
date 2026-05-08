@@ -5,7 +5,7 @@ import { useEffect, useRef } from 'react';
 interface Log {
   header: string;
   text: string;
-  metadata: any;
+  metadata?: string | number | boolean | null | object | Array<string | number | boolean | null | object>;
   key: string;
 }
 

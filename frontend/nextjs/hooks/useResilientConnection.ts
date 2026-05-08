@@ -17,6 +17,11 @@ import {
   generateRequestId
 } from "../utils/terminalLogger";
 
+type JsonPrimitive = string | number | boolean | null;
+type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
+type ErrorLike = Error | { message?: string; [key: string]: JsonValue };
+type RequestPayload = Record<string, JsonValue | string | number | boolean | null | undefined>;
+
 // Connection states with detailed status tracking
 export type ConnectionStatus =
   | "idle"
@@ -51,14 +56,14 @@ export interface ConnectionQuality {
 interface QueuedRequest {
   id: string;
   type: "research" | "chat" | "ping" | "status";
-  payload: any;
+  payload: RequestPayload;
   timestamp: number;
   priority: "low" | "normal" | "high" | "critical";
   retryCount: number;
   maxRetries: number;
-  onSuccess?: (result: any) => void;
-  onFailure?: (error: any) => void;
-  metadata?: Record<string, any>;
+  onSuccess?: (result: RequestPayload) => void;
+  onFailure?: (error: ErrorLike) => void;
+  metadata?: Record<string, string | number | boolean | null | object>;
 }
 
 // Enhanced connection state
@@ -229,7 +234,7 @@ export const useResilientConnection = (
 
   // Enhanced error sanitization
   const sanitizeError = useCallback(
-    (error: any): string => {
+    (error: ErrorLike): string => {
       if (!finalConfig.sanitizeErrors) return String(error);
 
       const errorStr = String(error);
@@ -367,7 +372,7 @@ export const useResilientConnection = (
 
   // Generate contextual user feedback messages
   const getContextualMessage = useCallback(
-    (status: ConnectionStatus, context: any = {}): string => {
+    (status: ConnectionStatus, context: { retryCount?: number; quality?: ConnectionQuality; currentTask?: string } = {}): string => {
       const { retryCount, quality, currentTask } = context;
 
       switch (status) {
@@ -786,7 +791,7 @@ export const useResilientConnection = (
 
         newSocket.onmessage = handleWebSocketMessage;
 
-        newSocket.onclose = (event: any) => {
+        newSocket.onclose = (event: CloseEvent) => {
           clearTimeout(connectionTimeout.current);
           if (heartbeatInterval.current)
             clearInterval(heartbeatInterval.current);
@@ -801,7 +806,7 @@ export const useResilientConnection = (
           }
         };
 
-        newSocket.onerror = (error: any) => {
+        newSocket.onerror = (error: Event) => {
           clearTimeout(connectionTimeout.current);
           logWebSocketError(error, requestId);
           handleConnectionFailure(
@@ -839,7 +844,7 @@ export const useResilientConnection = (
         localStorage.getItem("domainFilters") || "[]",
       );
       const domains = domainFilters
-        ? domainFilters.map((domain: any) => domain.value)
+        ? domainFilters.map((domain: { value: string }) => domain.value)
         : [];
 
       const {
@@ -850,7 +855,7 @@ export const useResilientConnection = (
         mcp_configs,
       } = chatBoxSettings;
 
-      const requestData: any = {
+      const requestData: RequestPayload = {
         task: promptValue,
         report_type,
         report_source,

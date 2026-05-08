@@ -22,9 +22,11 @@ interface WebSocketMessage {
   output: string | OutputData;
 }
 
+type AgentLogEntry = { output: string };
+
 export default function ChatBox({ chatBoxSettings, setChatBoxSettings }: ChatBoxProps) {
 
-  const [agentLogs, setAgentLogs] = useState<any[]>([]);
+  const [agentLogs, setAgentLogs] = useState<AgentLogEntry[]>([]);
   const [report, setReport] = useState("");
   const [accessData, setAccessData] = useState({});
   const [socket, setSocket] = useState<WebSocket | null>(null);

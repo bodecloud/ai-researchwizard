@@ -6,7 +6,7 @@ import { ChatBoxSettings, Data } from "@/types/data";
 interface CopilotResearchContentProps {
   orderedData: Data[];
   answer: string;
-  allLogs: any[];
+  allLogs: Array<{ header: string; text: string; metadata?: string | number | boolean | null | object | Array<string | number | boolean | null | object>; key: string }>;
   chatBoxSettings: ChatBoxSettings;
   loading: boolean;
   isStopped: boolean;

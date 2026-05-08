@@ -7,7 +7,7 @@ import Image from 'next/image';
 interface ResearchPanelProps {
   orderedData: Data[];
   answer: string;
-  allLogs: any[];
+  allLogs: Array<{ header: string; text: string; metadata?: string | number | boolean | null | object | Array<string | number | boolean | null | object>; key: string }>;
   chatBoxSettings: ChatBoxSettings;
   handleClickSuggestion: (value: string) => void;
   currentResearchId?: string;

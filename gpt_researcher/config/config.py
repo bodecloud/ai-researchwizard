@@ -234,12 +234,12 @@ class Config:
         self.report_format: str = DEFAULT_CONFIG.get("REPORT_FORMAT", "APA") or "APA"
         self.report_source: str = DEFAULT_CONFIG.get("REPORT_SOURCE", "web") or "web"
         # Handle RETRIEVER with default value
-        retriever_env: str = os.environ.get("RETRIEVER", DEFAULT_CONFIG.get("RETRIEVER", "tavily")) or "tavily"
+        retriever_env: str = os.environ.get("RETRIEVER", DEFAULT_CONFIG.get("RETRIEVER", "duckduckgo")) or "duckduckgo"
         try:
             self.retrievers: list[str] = self.parse_retrievers(retriever_env)
         except ValueError as e:
-            print(f"Warning: {e.__class__.__name__}: {e}. Defaulting to 'tavily' retriever.")
-            self.retrievers = ["tavily"]
+            print(f"Warning: {e.__class__.__name__}: {e}. Defaulting to 'duckduckgo' retriever.")
+            self.retrievers = ["duckduckgo"]
         self.scraper: str = DEFAULT_CONFIG.get("SCRAPER", "bs") or "bs"
         self.similarity_threshold: float = DEFAULT_CONFIG.get("SIMILARITY_THRESHOLD", 0.42) or 0.42
         self.total_words: int = DEFAULT_CONFIG.get("TOTAL_WORDS", 1200) or 1200
