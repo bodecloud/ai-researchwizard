@@ -7,6 +7,7 @@ Reads one JSON object from stdin (UTF-8), matching `HeadlessGptResearcherRequest
   - custom_prompt (optional)
   - source_urls (optional list[str])
   - query_domains (optional list[str])
+    - model (optional provider-qualified model id, e.g. openrouter:openrouter/auto)
   - report_type (optional, default research_report)
   - report_source (optional, default web)
 
@@ -26,6 +27,7 @@ import sys
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 try:
     from dotenv import load_dotenv
@@ -49,10 +51,32 @@ def _die(message: str, code: int = 1) -> None:
 def _normalize_model_for_ai_researchwizard(model: str) -> str:
     value = model.strip()
     if not value:
-        return "openrouter:openrouter/auto"
+        return "openrouter:openrouter/free"
     if ":" in value:
         return value
     return f"litellm:{value}"
+
+
+def _resolve_payload_model(payload: dict[str, Any]) -> str | None:
+    raw = payload.get("model")
+    if raw is None:
+        return None
+    if not isinstance(raw, str):
+        _die('payload: "model" must be a string when set', 1)
+    if raw.strip().casefold() == "auto":
+        return None
+    normalized = _normalize_model_for_ai_researchwizard(raw)
+    if len(normalized) > 180:
+        _die('payload: "model" is too long', 1)
+    return normalized
+
+
+def _apply_payload_model_override(payload: dict[str, Any]) -> None:
+    model = _resolve_payload_model(payload)
+    if not model:
+        return
+    for key in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
+        os.environ[key] = model
 
 
 def _model_id_for_completion(normalized_model: str) -> str:
@@ -98,24 +122,35 @@ def _probe_model(normalized_model: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
-def _resolve_fallback_chat_model() -> str:
+def _free_chat_fallback_models() -> list[str]:
     script_dir = Path(__file__).resolve().parent
     llm_fallbacks_src = script_dir.parent / "llm_fallbacks" / "src"
     if llm_fallbacks_src.is_dir():
         sys.path.insert(0, str(llm_fallbacks_src))
 
     try:
-        from llm_fallbacks import get_fallback_list
+        from llm_fallbacks.config import FREE_CHAT_MODELS
     except Exception:
-        return "openrouter:openrouter/auto"
+        try:
+            from llm_fallbacks import filter_models
+        except Exception:
+            return []
+        try:
+            return list(filter_models(model_type="chat", free_only=True))
+        except Exception:
+            return []
 
     try:
-        models = list(get_fallback_list("chat"))
+        return [name for name, _ in FREE_CHAT_MODELS]
     except Exception:
-        models = []
+        return []
+
+
+def _resolve_fallback_chat_model() -> str:
+    models = _free_chat_fallback_models()
 
     if not models:
-        return "openrouter:openrouter/auto"
+        return "openrouter:openrouter/free"
 
     return _normalize_model_for_ai_researchwizard(models[0])
 
@@ -126,17 +161,12 @@ def _resolve_next_working_free_chat_model(exclude: set[str] | None = None) -> st
     if llm_fallbacks_src.is_dir():
         sys.path.insert(0, str(llm_fallbacks_src))
 
-    try:
-        from llm_fallbacks import get_fallback_list
-    except Exception:
-        return None
-
     blocked = exclude or set()
     tried = 0
     # Keep probing bounded to avoid long startup delays.
     max_probes = 12
 
-    for raw in list(get_fallback_list("chat")):
+    for raw in _free_chat_fallback_models():
         normalized = _normalize_model_for_ai_researchwizard(raw)
         if normalized in blocked:
             continue
@@ -154,11 +184,7 @@ def _resolve_next_working_free_chat_model(exclude: set[str] | None = None) -> st
 
 
 def _ensure_runtime_defaults() -> None:
-    # Keep OpenRouter as primary implicit default when its key is available.
-    if os.environ.get("OPENROUTER_API_KEY", "").strip():
-        default_llm = "openrouter:openrouter/auto"
-    else:
-        default_llm = _resolve_fallback_chat_model()
+    default_llm = _resolve_fallback_chat_model()
 
     for key in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
         if not os.environ.get(key, "").strip():
@@ -171,7 +197,7 @@ def _ensure_runtime_defaults() -> None:
         ok, err = _probe_model(current_fast)
         if not ok and _is_openrouter_limit_error(err):
             replacement = _resolve_next_working_free_chat_model(
-                exclude={current_fast, "openrouter:openrouter/auto"},
+                exclude={current_fast, "openrouter:openrouter/auto", "openrouter:openrouter/free"},
             )
             if replacement:
                 for key in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
@@ -182,6 +208,67 @@ def _ensure_runtime_defaults() -> None:
     # Tavily remains optional; default to duckduckgo retriever when unset.
     if not os.environ.get("RETRIEVER", "").strip():
         os.environ["RETRIEVER"] = "duckduckgo"
+
+
+def _payload_string_list(payload: dict[str, Any], field: str) -> list[str]:
+    raw = payload.get(field) or []
+    if not isinstance(raw, list) or not all(isinstance(value, str) for value in raw):
+        _die(f'payload: "{field}" must be a list of strings when set', 1)
+    return [value.strip().rstrip("/") for value in raw if value.strip()]
+
+
+def _set_allowlist_env_from_payload(payload: dict[str, Any]) -> None:
+    """Keep direct CLI/script execution as restricted as the Node spawn path."""
+    query_domains = _payload_string_list(payload, "query_domains")
+    allowed_url_prefixes = _payload_string_list(payload, "allowed_url_prefixes")
+    if query_domains:
+        os.environ["TRASK_ALLOWED_QUERY_DOMAINS"] = "\n".join(query_domains)
+    if allowed_url_prefixes:
+        os.environ["TRASK_ALLOWED_URL_PREFIXES"] = "\n".join(allowed_url_prefixes)
+
+
+def _allowlist_values(env_name: str) -> list[str]:
+    raw = os.environ.get(env_name, "")
+    return [part.strip().rstrip("/") for part in raw.replace(",", "\n").splitlines() if part.strip()]
+
+
+def _hostname_matches(hostname: str, allowed_domain: str) -> bool:
+    host = hostname.lower().removeprefix("www.")
+    domain = allowed_domain.lower().removeprefix("www.")
+    return host == domain or host.endswith(f".{domain}")
+
+
+def _url_allowed(url: str) -> bool:
+    prefixes = _allowlist_values("TRASK_ALLOWED_URL_PREFIXES")
+    domains = _allowlist_values("TRASK_ALLOWED_QUERY_DOMAINS")
+    if not prefixes and not domains:
+        return True
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    normalized = url.strip().rstrip("/")
+    if prefixes:
+        return any(normalized == prefix or normalized.startswith(f"{prefix}/") for prefix in prefixes)
+    return bool(domains and any(_hostname_matches(parsed.hostname or "", domain) for domain in domains))
+
+
+def _partition_allowed_urls(urls: list[str]) -> tuple[list[str], list[str]]:
+    accepted: list[str] = []
+    rejected: list[str] = []
+    seen: set[str] = set()
+    for raw in urls:
+        url = raw.strip().rstrip("/")
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        if _url_allowed(url):
+            accepted.append(url)
+        else:
+            rejected.append(url)
+    return accepted, rejected
 
 
 def _payload_from_stdin() -> dict[str, Any]:
@@ -210,13 +297,11 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
         _die('payload: "custom_prompt" must be a string when set', 1)
     custom_prompt = custom_prompt or ""
 
-    source_urls = payload.get("source_urls") or []
-    if not isinstance(source_urls, list) or not all(isinstance(u, str) for u in source_urls):
-        _die('payload: "source_urls" must be a list of strings when set', 1)
-
-    query_domains = payload.get("query_domains") or []
-    if not isinstance(query_domains, list) or not all(isinstance(d, str) for d in query_domains):
-        _die('payload: "query_domains" must be a list of strings when set', 1)
+    _set_allowlist_env_from_payload(payload)
+    source_urls_raw = _payload_string_list(payload, "source_urls")
+    source_urls, rejected_source_urls = _partition_allowed_urls(source_urls_raw)
+    query_domains = _payload_string_list(payload, "query_domains")
+    allowed_url_prefixes = _payload_string_list(payload, "allowed_url_prefixes")
 
     report_type = payload.get("report_type") or ReportType.ResearchReport.value
     report_source = payload.get("report_source") or ReportSource.Web.value
@@ -244,12 +329,19 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
         await researcher.conduct_research()
         report = await researcher.write_report(custom_prompt=custom_prompt)
 
-    visited = list(researcher.visited_urls)
+    raw_visited = list(researcher.visited_urls)
+    visited, rejected_visited = _partition_allowed_urls(raw_visited)
+    rejected_by_pipeline = getattr(researcher, "trask_rejected_source_urls", [])
+    if not isinstance(rejected_by_pipeline, list):
+        rejected_by_pipeline = []
     return {
         "report": report if isinstance(report, str) else str(report),
         "research_information": {
             "source_urls": visited,
             "visited_urls": visited,
+            "query_domains": query_domains,
+            "allowed_url_prefixes": allowed_url_prefixes,
+            "rejected_source_urls": [*rejected_source_urls, *rejected_by_pipeline, *rejected_visited],
         },
     }
 
@@ -262,15 +354,11 @@ async def _run_detailed(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(query, str) or not query.strip():
         _die('payload: string field "query" is required', 1)
 
-    source_urls_raw = payload.get("source_urls") or []
-    query_domains_raw = payload.get("query_domains") or []
-    if not isinstance(source_urls_raw, list):
-        _die('payload: "source_urls" invalid', 1)
-    if not isinstance(query_domains_raw, list):
-        _die('payload: "query_domains" invalid', 1)
-
-    source_urls = [u for u in source_urls_raw if isinstance(u, str)]
-    query_domains = [d for d in query_domains_raw if isinstance(d, str)]
+    _set_allowlist_env_from_payload(payload)
+    source_urls_raw = _payload_string_list(payload, "source_urls")
+    source_urls, rejected_source_urls = _partition_allowed_urls(source_urls_raw)
+    query_domains = _payload_string_list(payload, "query_domains")
+    allowed_url_prefixes = _payload_string_list(payload, "allowed_url_prefixes")
 
     capture = io.StringIO()
     with redirect_stdout(capture):
@@ -283,17 +371,25 @@ async def _run_detailed(payload: dict[str, Any]) -> dict[str, Any]:
         )
         report = await detailed.run()
 
-    visited = list(detailed.gpt_researcher.visited_urls)
+    raw_visited = list(detailed.gpt_researcher.visited_urls)
+    visited, rejected_visited = _partition_allowed_urls(raw_visited)
+    rejected_by_pipeline = getattr(detailed.gpt_researcher, "trask_rejected_source_urls", [])
+    if not isinstance(rejected_by_pipeline, list):
+        rejected_by_pipeline = []
     return {
         "report": report if isinstance(report, str) else str(report),
         "research_information": {
             "source_urls": visited,
             "visited_urls": visited,
+            "query_domains": query_domains,
+            "allowed_url_prefixes": allowed_url_prefixes,
+            "rejected_source_urls": [*rejected_source_urls, *rejected_by_pipeline, *rejected_visited],
         },
     }
 
 
 async def _async_main(payload: dict[str, Any]) -> dict[str, Any]:
+    _apply_payload_model_override(payload)
     report_type = payload.get("report_type") or "research_report"
     if report_type == "detailed_report":
         return await _run_detailed(payload)

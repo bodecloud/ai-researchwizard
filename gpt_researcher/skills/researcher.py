@@ -10,6 +10,7 @@ import logging
 import os
 import random
 from typing import Any
+from urllib.parse import urlparse
 
 from ..actions.agent_creator import choose_agent
 from ..actions.query_processing import get_search_results, plan_research_outline
@@ -17,6 +18,48 @@ from ..actions.utils import stream_output
 from ..document import DocumentLoader, LangChainDocumentLoader, OnlineDocumentLoader
 from ..utils.enum import ReportSource, ReportType
 from ..utils.logging_config import get_json_handler
+
+
+def _trask_allowed_values(env_name: str) -> list[str]:
+    raw = os.environ.get(env_name, "")
+    return [part.strip().rstrip("/") for part in raw.replace(",", "\n").splitlines() if part.strip()]
+
+
+def _trask_hostname_matches(hostname: str, allowed_domain: str) -> bool:
+    host = hostname.lower().removeprefix("www.")
+    domain = allowed_domain.lower().removeprefix("www.")
+    return host == domain or host.endswith(f".{domain}")
+
+
+def _trask_url_allowed(url: str) -> bool:
+    prefixes = _trask_allowed_values("TRASK_ALLOWED_URL_PREFIXES")
+    domains = _trask_allowed_values("TRASK_ALLOWED_QUERY_DOMAINS")
+    if not prefixes and not domains:
+        return True
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return False
+    normalized = url.rstrip("/")
+    if prefixes:
+        return any(normalized == prefix or normalized.startswith(f"{prefix}/") for prefix in prefixes)
+    return bool(domains and any(_trask_hostname_matches(parsed.hostname or "", domain) for domain in domains))
+
+
+def _record_trask_rejected_urls(researcher: Any, urls: list[str]) -> None:
+    if not urls:
+        return
+    existing = getattr(researcher, "trask_rejected_source_urls", [])
+    if not isinstance(existing, list):
+        existing = []
+    seen = set(existing)
+    for url in urls:
+        if url not in seen:
+            existing.append(url)
+            seen.add(url)
+    setattr(researcher, "trask_rejected_source_urls", existing)
 
 
 class ResearchConductor:
@@ -800,7 +843,11 @@ class ResearchConductor:
         """
 
         new_urls: list[str] = []
+        rejected_urls: list[str] = []
         for url in url_set_input or []:
+            if not _trask_url_allowed(url):
+                rejected_urls.append(url)
+                continue
             if url not in self.researcher.visited_urls:
                 self.researcher.visited_urls.add(url)
                 new_urls.append(url)
@@ -813,6 +860,19 @@ class ResearchConductor:
                         True,
                         url,
                     )
+
+        if rejected_urls:
+            _record_trask_rejected_urls(self.researcher, rejected_urls)
+            self.logger.warning(f"Rejected {len(rejected_urls)} URL(s) outside Trask allowlist: {rejected_urls[:8]}")
+            if self.researcher.verbose:
+                await stream_output(
+                    "logs",
+                    "rejected_source_urls",
+                    f"Skipped {len(rejected_urls)} URL(s) outside the approved Trask source allowlist.",
+                    self.researcher.websocket,
+                    True,
+                    rejected_urls,
+                )
 
         return new_urls
 
@@ -838,6 +898,7 @@ class ResearchConductor:
                 search_results: list[dict[str, Any]] = await get_search_results(
                     query,
                     primary_retriever,
+                    query_domains=self.researcher.query_domains,
                     fallback_retrievers=fallback_retrievers,
                     min_results=1,
                 )
@@ -848,6 +909,11 @@ class ResearchConductor:
                     for url in search_results
                     if url.get("href")
                 ]
+                rejected_urls = [url for url in search_urls if not _trask_url_allowed(url)]
+                search_urls = [url for url in search_urls if _trask_url_allowed(url)]
+                if rejected_urls:
+                    _record_trask_rejected_urls(self.researcher, rejected_urls)
+                    self.logger.info(f"Filtered {len(rejected_urls)} search result URL(s) outside Trask allowlist")
                 new_search_urls.extend(search_urls)
             except Exception as e:
                 self.logger.error(f"Error searching with retrievers: {e.__class__.__name__}: {e}")
