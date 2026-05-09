@@ -86,6 +86,9 @@ def _build_emergency_fallback_providers(
     This acts as a safety net when the requested primary provider cannot be
     initialized and no explicit fallback list is configured.
     """
+    if os.environ.get("TRASK_DISABLE_EMERGENCY_FALLBACKS", "").strip().lower() in {"1", "true", "yes"}:
+        return []
+
     candidates: list[tuple[str, str]] = []
 
     if os.environ.get("OPENROUTER_API_KEY"):

@@ -166,9 +166,18 @@ class GPTResearcher:
         self.kwargs = kwargs
         self.query: str = query
         self.report_type = report_type
+        import sys as _trask_sys, time as _trask_time, os as _trask_os
+        _trask_log = _trask_os.environ.get("TRASK_DEBUG_TIMING", "").lower() in ("1", "true", "yes")
+        def _t(label: str, t0: float) -> float:
+            if _trask_log:
+                print(f"[TRASK_TIMING][init] {label}={_trask_time.perf_counter() - t0:.2f}s", file=_trask_sys.stderr, flush=True)
+            return _trask_time.perf_counter()
+        _t0 = _trask_time.perf_counter()
         self.cfg: Config = Config(config_path)
+        _t0 = _t("Config()", _t0)
         self.cfg.set_verbose(verbose)
         self.llm: GenericLLMProvider = GenericLLMProvider(self.cfg)
+        _t0 = _t("GenericLLMProvider", _t0)
         self.report_type: ReportType | str = report_type
         self.report_source: ReportSource | str | None = report_source if report_source else getattr(self.cfg, "report_source", None)
         self.report_format: str = report_format
@@ -212,12 +221,14 @@ class GPTResearcher:
             self._process_mcp_configs(mcp_configs)
 
         self.retrievers: list[type[RetrieverABC]] = get_retrievers(self.headers, self.cfg)
+        _t0 = _t("get_retrievers", _t0)
 
         self.memory: Memory = Memory(
             self.cfg.embedding_provider,
             self.cfg.embedding_model,
             **self.cfg.embedding_kwargs,
         )
+        _t0 = _t("Memory", _t0)
 
         # Set default encoding to utf-8
         self.encoding = kwargs.get('encoding', 'utf-8')
@@ -229,12 +240,14 @@ class GPTResearcher:
         self.context_manager: ContextManager = ContextManager(self)
         self.scraper_manager: BrowserManager = BrowserManager(self)
         self.source_curator: SourceCurator = SourceCurator(self)
+        _t0 = _t("components", _t0)
         self.deep_researcher: Optional[DeepResearchSkill] = None
         if report_type == ReportType.DeepResearch.value:
             self.deep_researcher = DeepResearchSkill(self)
 
         # Initialize image generator (optional - only if configured)
         self.image_generator: Optional[ImageGenerator] = ImageGenerator(self)
+        _t0 = _t("ImageGenerator", _t0)
         self.available_images: list = []  # Pre-generated images ready for embedding
         self._research_id: str = ""  # Unique ID for this research session
 
