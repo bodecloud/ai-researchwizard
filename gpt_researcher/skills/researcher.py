@@ -493,9 +493,13 @@ class ResearchConductor:
                 self._mcp_results_cache = mcp_context
                 self.logger.info(f"MCP results cached: {len(mcp_context)} total context entries")
 
-        # Generate Sub-Queries including original query
-        sub_queries: list[str] = await self.plan_research(query)
-        self.logger.info(f"Generated sub-queries: {sub_queries}")
+        # Trask Q&A is latency-bound and already receives a focused user query
+        # plus a strict source allowlist, so skip the extra LLM planning call.
+        if os.environ.get("TRASK_FAST_QA", "").strip().lower() in {"1", "true", "yes"}:
+            sub_queries: list[str] = []
+        else:
+            sub_queries = await self.plan_research(query)
+            self.logger.info(f"Generated sub-queries: {sub_queries}")
 
         # If this is not part of a sub researcher, add original query to research for better results
         if self.researcher.report_type != "subtopic_report":
