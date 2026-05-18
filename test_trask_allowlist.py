@@ -1,7 +1,12 @@
 import os
 import unittest
 
-from trask_headless_research import _partition_allowed_urls, _set_allowlist_env_from_payload, _url_allowed
+from trask_headless_research import (
+    _build_report_from_urls,
+    _partition_allowed_urls,
+    _set_allowlist_env_from_payload,
+    _url_allowed,
+)
 
 
 class TraskHeadlessAllowlistTests(unittest.TestCase):
@@ -26,6 +31,16 @@ class TraskHeadlessAllowlistTests(unittest.TestCase):
         self.assertTrue(_url_allowed("https://deadlystream.com/topic/123-test"))
         self.assertFalse(_url_allowed("https://github.com/unapproved/project"))
         self.assertFalse(_url_allowed("https://example.com/kotor"))
+
+    def test_build_report_from_urls_includes_sources_block(self):
+        os.environ["TRASK_ALLOWED_URL_PREFIXES"] = "https://deadlystream.com"
+        report = _build_report_from_urls(
+            "What is TSLPatcher?",
+            ["https://deadlystream.com/topic/123-tsl-patcher-guide"],
+        )
+        self.assertIn("Sources", report)
+        self.assertIn("[1]", report)
+        self.assertIn("https://deadlystream.com/topic/123-tsl-patcher-guide", report)
 
     def test_partition_reports_rejected_urls_for_audit(self):
         os.environ["TRASK_ALLOWED_URL_PREFIXES"] = "https://kotor.neocities.org"
