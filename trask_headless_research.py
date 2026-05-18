@@ -50,6 +50,40 @@ TRASK_FREE_CHAT_MODELS = [
     "groq/llama-3.1-8b-instant",
 ]
 
+TRASK_LLM_CREDENTIAL_ENV_NAMES = (
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GEMINI_API_KEY",
+    "GOOGLE_API_KEY",
+    "GROQ_API_KEY",
+    "ANTHROPIC_API_KEY",
+)
+
+TRASK_QUERY_STOPWORDS = {
+    "what",
+    "where",
+    "when",
+    "which",
+    "with",
+    "from",
+    "about",
+    "into",
+    "this",
+    "that",
+    "used",
+    "does",
+    "help",
+    "work",
+    "works",
+    "used",
+    "kotor",
+    "kotor1",
+    "kotor2",
+    "knights",
+    "republic",
+    "toolchain",
+}
+
 
 def _die(message: str, code: int = 1) -> None:
     print(message, file=sys.stderr)
@@ -201,7 +235,7 @@ def _resolve_next_working_free_chat_model(exclude: set[str] | None = None) -> st
 
 def _ensure_runtime_defaults() -> None:
     default_llm = _resolve_fallback_chat_model()
-    os.environ.setdefault("TRASK_FAST_QA", "1")
+    os.environ.setdefault("TRASK_FAST_QA", "0")
     os.environ.setdefault("TRASK_DISABLE_EMERGENCY_FALLBACKS", "1")
 
     for key in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
@@ -235,10 +269,10 @@ def _ensure_runtime_defaults() -> None:
         import tempfile
         perf_overrides = {
             "MAX_ITERATIONS": 1,
-            "MAX_SEARCH_RESULTS_PER_QUERY": 3,
+            "MAX_SEARCH_RESULTS_PER_QUERY": 5,
             "MAX_SCRAPER_WORKERS": 6,
-            "TOTAL_WORDS": 180,
-            "SUMMARY_TOKEN_LIMIT": 240,
+            "TOTAL_WORDS": 320,
+            "SUMMARY_TOKEN_LIMIT": 360,
             "CURATE_SOURCES": False,
         }
         try:
@@ -338,7 +372,7 @@ def _query_terms(query: str) -> set[str]:
     return {
         token.lower()
         for token in re.findall(r"[a-zA-Z0-9_.+-]{4,}", query)
-        if token.lower() not in {"what", "where", "when", "which", "with", "from", "kotor", "kotor1", "kotor2"}
+        if token.lower() not in TRASK_QUERY_STOPWORDS
     }
 
 
@@ -363,13 +397,26 @@ def _parse_context_blocks(context: Any) -> list[dict[str, str]]:
     return [{"url": "", "title": "Research context", "content": compact}] if compact else []
 
 
+_GARBAGE_PATTERNS = re.compile(
+    r"enable javascript|cookies to continue|please enable|cloudflare|"
+    r"checking your browser|just a moment|ray id:\s*[0-9a-f]+|"
+    r"ddos protection|access denied|403 forbidden|error\s+403|"
+    r"this page requires javascript|javascript is required",
+    re.IGNORECASE,
+)
+
+
+def _is_garbage_sentence(sentence: str) -> bool:
+    return bool(_GARBAGE_PATTERNS.search(sentence))
+
+
 def _sentence_score(sentence: str, terms: set[str]) -> int:
     lowered = sentence.lower()
+    # Base score: relevance to query terms.
     score = sum(2 for term in terms if term in lowered)
-    if re.search(r"\b(?:tool|tools|model|models|mdl|mdx|blender|3ds\s*max|import|export|edit|convert|compile|decompile)\b", lowered):
-        score += 3
-    if re.search(r"\b(?:pykotor|mdlops|mdledit|kotormax|kotorblender|tga2tpc|xoreos)\b", lowered):
-        score += 4
+    # Boost sentences that cite a URL (more informative).
+    if re.search(r"https?://", lowered):
+        score += 1
     return score
 
 
@@ -380,51 +427,198 @@ def _trim_sentence(sentence: str, limit: int = 240) -> str:
     return clean[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
 
 
-def _build_fast_report_from_context(query: str, context: Any) -> str:
-    blocks = _parse_context_blocks(context)
+def _has_llm_credentials() -> bool:
+    return any(os.environ.get(name, "").strip() for name in TRASK_LLM_CREDENTIAL_ENV_NAMES)
+
+
+def _extract_cited_urls_from_report(report: str) -> list[str]:
+    if not report.strip():
+        return []
+    normalized = report.replace("\r\n", "\n")
+    match = re.search(r"\n(?:#{1,6}\s*)?(?:Sources|References)\s*\n", normalized, re.IGNORECASE)
+    source_text = normalized[match.end() :] if match else normalized
+    urls = re.findall(r"https?://[^\s)\]]+", source_text)
+    return _partition_allowed_urls(urls)[0]
+
+
+def _block_relevance(block: dict[str, str], terms: set[str]) -> tuple[int, int]:
+    title = block["title"].lower()
+    content = block["content"].lower()
+    url = block["url"].lower()
+    title_hits = sum(1 for term in terms if term in title)
+    url_hits = sum(1 for term in terms if term in url)
+    content_hits = sum(1 for term in terms if term in content)
+    matched = title_hits + url_hits + content_hits
+    score = title_hits * 6 + url_hits * 5 + content_hits * 2
+    if title_hits > 0 or url_hits > 0:
+        score += 3
+    return score, matched
+
+
+def _extract_context_urls(context: Any) -> list[str]:
+    urls = [block["url"] for block in _parse_context_blocks(context) if block.get("url")]
+    return _partition_allowed_urls(urls)[0]
+
+
+def _title_from_url(url: str) -> str:
+    try:
+        parsed = urlparse(url)
+        parts = [part for part in parsed.path.split("/") if part]
+        slug = parts[-1] if parts else parsed.hostname or url
+        cleaned = re.sub(r"^\d+-?", "", slug)
+        cleaned = re.sub(r"[-_]+", " ", cleaned).strip()
+        return cleaned.title() if cleaned else (parsed.hostname or url)
+    except Exception:
+        return url
+
+
+def _build_report_from_urls(query: str, urls: list[str]) -> dict[str, Any]:
+    """When scraped context is empty but allowlisted URLs were visited, return candidate sources only."""
+    unique: list[str] = []
+    seen: set[str] = set()
+    for raw in urls:
+        url = raw.strip().rstrip("/")
+        if not url or url in seen or not _url_allowed(url):
+            continue
+        seen.add(url)
+        unique.append(url)
+    if not unique:
+        return {
+            "report": "I could not complete live archive synthesis for this question right now.",
+            "retrieved_urls": [],
+            "cited_urls": [],
+        }
+
+    rows = [{"title": _title_from_url(url), "url": url} for url in unique[:6]]
+    topic = query.strip().rstrip("?")
+    bullets: list[str] = []
+    for index, row in enumerate(rows, start=1):
+        line = _trim_sentence(
+            f"{row['title']} is an approved archive page that may answer questions about {topic}.",
+            220,
+        )
+        bullets.append(f"- {line} [{index}]")
+    source_lines = ["Sources"]
+    for index, row in enumerate(rows, start=1):
+        source_lines.append(f"{index}. {row['title']} - {row['url']}")
+    report = "\n".join([*bullets, "", *source_lines])
+    return {
+        "report": report,
+        "retrieved_urls": [row["url"] for row in rows],
+        "cited_urls": [row["url"] for row in rows],
+    }
+
+
+def _build_fast_report_from_context(
+    query: str,
+    context: Any,
+    visited_urls: list[str] | None = None,
+) -> dict[str, Any]:
+    raw_blocks = _parse_context_blocks(context)
+    # Pre-filter whole blocks whose content is entirely a scraper-block response
+    # (e.g. Cloudflare "Enable JavaScript and cookies to continue" pages).
+    blocks = [b for b in raw_blocks if not _is_garbage_sentence(b["content"])]
+
     if not blocks:
-        return "I could not complete live archive synthesis for this question right now."
+        if visited_urls:
+            return _build_report_from_urls(query, visited_urls)
+        return {
+            "report": "I could not complete live archive synthesis for this question right now.",
+            "retrieved_urls": [],
+            "cited_urls": [],
+        }
 
     terms = _query_terms(query)
+    ranked_blocks: list[tuple[int, int, dict[str, str]]] = []
+    for block in blocks[:12]:
+        score, matched = _block_relevance(block, terms)
+        if terms and matched == 0:
+            continue
+        if score < 4:
+            continue
+        ranked_blocks.append((score, matched, block))
+
+    if not ranked_blocks:
+        if visited_urls:
+            return _build_report_from_urls(query, visited_urls)
+        return {
+            "report": "I could not complete live archive synthesis for this question right now.",
+            "retrieved_urls": [],
+            "cited_urls": [],
+        }
+
+    ranked_blocks.sort(key=lambda item: (item[0], item[1]), reverse=True)
+
     source_numbers: dict[str, int] = {}
     source_rows: list[dict[str, str]] = []
     bullets: list[str] = []
+    retrieved_rows: list[dict[str, str]] = []
+    cited_urls: list[str] = []
+    top_blocks = ranked_blocks[:5]
 
-    for block in blocks[:8]:
+    for _score, matched_count, block in top_blocks:
         url = block["url"]
         if url and url not in source_numbers:
             source_numbers[url] = len(source_rows) + 1
             source_rows.append({"title": block["title"], "url": url})
+        if url:
+            retrieved_rows.append({"title": block["title"], "url": url})
 
         sentences = [
             _trim_sentence(part)
             for part in re.split(r"(?<=[.!?])\s+|\s+[•*-]\s+", block["content"])
-            if len(part.strip()) >= 40
+            if len(part.strip()) >= 40 and not _is_garbage_sentence(part)
         ]
-        ranked = sorted(sentences, key=lambda item: _sentence_score(item, terms), reverse=True)
-        for sentence in ranked[:2]:
+        ranked_sentences: list[tuple[int, int, str]] = []
+        for index, sentence in enumerate(sentences[:10]):
+            term_hits = sum(1 for term in terms if term in sentence.lower())
+            if terms and term_hits == 0 and matched_count < 2:
+                continue
+            sentence_score = _sentence_score(sentence, terms) + (2 if index == 0 else 0)
+            if term_hits == 0:
+                sentence_score -= 1
+            ranked_sentences.append((sentence_score, term_hits, sentence))
+        ranked_sentences.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        for _sentence_score_value, term_hits, sentence in ranked_sentences[:2]:
             if len(bullets) >= 5:
                 break
+            if terms and term_hits == 0 and matched_count < 2:
+                continue
             if any(sentence.lower() == existing.lower().rsplit(" [", 1)[0] for existing in bullets):
                 continue
             citation = f" [{source_numbers[url]}]" if url in source_numbers else ""
             bullets.append(f"- {sentence}{citation}")
+            if url:
+                cited_urls.append(url)
         if len(bullets) >= 5:
             break
 
     if not bullets:
-        first = blocks[0]
+        first = top_blocks[0][2]
         url = first["url"]
         if url and url not in source_numbers:
             source_numbers[url] = len(source_rows) + 1
             source_rows.append({"title": first["title"], "url": url})
         citation = f" [{source_numbers[url]}]" if url in source_numbers else ""
+        if terms and top_blocks[0][1] == 0:
+            return _build_report_from_urls(query, visited_urls or [])
         bullets.append(f"- {_trim_sentence(first['content'])}{citation}")
+        if url:
+            cited_urls.append(url)
+
+    if not bullets and visited_urls:
+        return _build_report_from_urls(query, visited_urls)
 
     source_lines = ["Sources"]
     for index, row in enumerate(source_rows[:6], start=1):
         source_lines.append(f"{index}. {row['title']} - {row['url']}")
-    return "\n".join([*bullets, "", *source_lines])
+    report = "\n".join([*bullets, "", *source_lines])
+    retrieved_urls = [row["url"] for row in retrieved_rows[:6] if row.get("url")]
+    return {
+        "report": report,
+        "retrieved_urls": retrieved_urls,
+        "cited_urls": _partition_allowed_urls(cited_urls)[0],
+    }
 
 
 async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
@@ -452,6 +646,7 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
         _die('payload: "report_type" must be a string', 1)
     if not isinstance(report_source, str):
         _die('payload: "report_source" must be a string', 1)
+    has_llm_credentials = _has_llm_credentials()
 
     # Wrap the constructor AND the async calls in redirect_stdout so that
     # any debug loggers initialised during GPTResearcher.__init__ don't
@@ -475,32 +670,76 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
         print(f"[TRASK_TIMING] init={time.perf_counter() - t_init:.2f}s", file=sys.stderr, flush=True)
 
         t_research = time.perf_counter()
-        await researcher.conduct_research()
-        print(
-            f"[TRASK_TIMING] conduct_research={time.perf_counter() - t_research:.2f}s "
-            f"visited={len(researcher.visited_urls)} retriever={os.environ.get('RETRIEVER', '?')}",
-            file=sys.stderr,
-            flush=True,
-        )
+        try:
+            await researcher.conduct_research()
+            print(
+                f"[TRASK_TIMING] conduct_research={time.perf_counter() - t_research:.2f}s "
+                f"visited={len(researcher.visited_urls)} retriever={os.environ.get('RETRIEVER', '?')}",
+                file=sys.stderr,
+                flush=True,
+            )
+        except Exception as exc:
+            if has_llm_credentials:
+                raise
+            print(
+                f"[TRASK_WARN] conduct_research failed without LLM credentials; degrading safely: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+            researcher.visited_urls = []
+            report_meta = _build_report_from_urls(query.strip(), source_urls)
+            return {
+                "report": report_meta["report"],
+                "research_information": {
+                    "source_urls": report_meta["cited_urls"],
+                    "cited_urls": report_meta["cited_urls"],
+                    "retrieved_urls": report_meta["retrieved_urls"],
+                    "visited_urls": [],
+                    "query_domains": query_domains,
+                    "allowed_url_prefixes": allowed_url_prefixes,
+                    "rejected_source_urls": rejected_source_urls,
+                },
+            }
 
         if os.environ.get("TRASK_FAST_QA", "").strip().lower() in {"1", "true", "yes"}:
             t_report = time.perf_counter()
-            report = _build_fast_report_from_context(query.strip(), researcher.context)
+            report_meta = _build_fast_report_from_context(
+                query.strip(),
+                researcher.context,
+                list(researcher.visited_urls),
+            )
             print(
                 f"[TRASK_TIMING] fast_report={time.perf_counter() - t_report:.2f}s "
-                f"report_chars={len(report) if isinstance(report, str) else 0}",
+                f"report_chars={len(report_meta['report']) if isinstance(report_meta.get('report'), str) else 0}",
                 file=sys.stderr,
                 flush=True,
             )
         else:
             t_report = time.perf_counter()
-            report = await researcher.write_report(custom_prompt=custom_prompt)
-            print(
-                f"[TRASK_TIMING] write_report={time.perf_counter() - t_report:.2f}s "
-                f"report_chars={len(report) if isinstance(report, str) else 0}",
-                file=sys.stderr,
-                flush=True,
-            )
+            if not has_llm_credentials:
+                report_meta = _build_fast_report_from_context(
+                    query.strip(),
+                    researcher.context,
+                    list(researcher.visited_urls),
+                )
+                print(
+                    f"[TRASK_WARN] write_report skipped without LLM credentials; using grounded fast report fallback",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            else:
+                report = await researcher.write_report(custom_prompt=custom_prompt)
+                report_meta = {
+                    "report": report if isinstance(report, str) else str(report),
+                    "retrieved_urls": _extract_context_urls(researcher.context),
+                    "cited_urls": _extract_cited_urls_from_report(report if isinstance(report, str) else str(report)),
+                }
+                print(
+                    f"[TRASK_TIMING] write_report={time.perf_counter() - t_report:.2f}s "
+                    f"report_chars={len(report) if isinstance(report, str) else 0}",
+                    file=sys.stderr,
+                    flush=True,
+                )
 
     raw_visited = list(researcher.visited_urls)
     visited, rejected_visited = _partition_allowed_urls(raw_visited)
@@ -508,9 +747,11 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(rejected_by_pipeline, list):
         rejected_by_pipeline = []
     return {
-        "report": report if isinstance(report, str) else str(report),
+        "report": report_meta["report"],
         "research_information": {
-            "source_urls": visited,
+            "source_urls": report_meta["cited_urls"],
+            "cited_urls": report_meta["cited_urls"],
+            "retrieved_urls": report_meta["retrieved_urls"],
             "visited_urls": visited,
             "query_domains": query_domains,
             "allowed_url_prefixes": allowed_url_prefixes,
@@ -549,10 +790,13 @@ async def _run_detailed(payload: dict[str, Any]) -> dict[str, Any]:
     rejected_by_pipeline = getattr(detailed.gpt_researcher, "trask_rejected_source_urls", [])
     if not isinstance(rejected_by_pipeline, list):
         rejected_by_pipeline = []
+    report_text = report if isinstance(report, str) else str(report)
     return {
-        "report": report if isinstance(report, str) else str(report),
+        "report": report_text,
         "research_information": {
-            "source_urls": visited,
+            "source_urls": _extract_cited_urls_from_report(report_text),
+            "cited_urls": _extract_cited_urls_from_report(report_text),
+            "retrieved_urls": _extract_context_urls(detailed.gpt_researcher.context),
             "visited_urls": visited,
             "query_domains": query_domains,
             "allowed_url_prefixes": allowed_url_prefixes,
