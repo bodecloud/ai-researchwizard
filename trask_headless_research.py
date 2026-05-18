@@ -191,9 +191,28 @@ def _free_chat_fallback_models() -> list[str]:
         return []
 
 
-def _resolve_fallback_chat_model() -> str:
-    models = _free_chat_fallback_models()
+def _credential_backed_default_llm() -> str | None:
+    """Pick the first free-chat model whose provider credentials are present."""
+    if os.environ.get("OPENROUTER_API_KEY", "").strip():
+        return "openrouter:openrouter/free"
+    if os.environ.get("OPENAI_API_KEY", "").strip():
+        return "openai:gpt-4o-mini"
+    if os.environ.get("GROQ_API_KEY", "").strip():
+        return "groq/llama-3.1-8b-instant"
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("GOOGLE_API_KEY", "").strip()
+    if gemini_key:
+        return "gemini/gemini-2.5-flash-lite"
+    if os.environ.get("ANTHROPIC_API_KEY", "").strip():
+        return "anthropic/claude-3-5-haiku-latest"
+    return None
 
+
+def _resolve_fallback_chat_model() -> str:
+    backed = _credential_backed_default_llm()
+    if backed:
+        return backed
+
+    models = _free_chat_fallback_models()
     for raw in models:
         normalized = _normalize_model_for_ai_researchwizard(raw)
         if not normalized.startswith("openrouter:"):
@@ -234,9 +253,14 @@ def _resolve_next_working_free_chat_model(exclude: set[str] | None = None) -> st
 
 
 def _ensure_runtime_defaults() -> None:
-    default_llm = _resolve_fallback_chat_model()
+    has_credentials = _has_llm_credentials()
+    default_llm = _resolve_fallback_chat_model() if has_credentials else "openrouter:openrouter/free"
     os.environ.setdefault("TRASK_FAST_QA", "0")
     os.environ.setdefault("TRASK_DISABLE_EMERGENCY_FALLBACKS", "1")
+
+    if not has_credentials:
+        # Avoid probing Gemini/OpenRouter without keys — retriever-only path handles research.
+        return
 
     for key in ("FAST_LLM", "SMART_LLM", "STRATEGIC_LLM"):
         current = _normalize_model_for_ai_researchwizard(os.environ.get(key, ""))
@@ -268,11 +292,11 @@ def _ensure_runtime_defaults() -> None:
     if not os.environ.get("CONFIG_PATH", "").strip():
         import tempfile
         perf_overrides = {
-            "MAX_ITERATIONS": 1,
-            "MAX_SEARCH_RESULTS_PER_QUERY": 5,
+            "MAX_ITERATIONS": 3,
+            "MAX_SEARCH_RESULTS_PER_QUERY": 8,
             "MAX_SCRAPER_WORKERS": 6,
-            "TOTAL_WORDS": 320,
-            "SUMMARY_TOKEN_LIMIT": 360,
+            "TOTAL_WORDS": 720,
+            "SUMMARY_TOKEN_LIMIT": 720,
             "CURATE_SOURCES": False,
         }
         try:
@@ -472,6 +496,151 @@ def _title_from_url(url: str) -> str:
         return url
 
 
+def _load_trask_dotenv() -> None:
+    """Load repo + vendor dotenv files so subprocess cwd does not hide API keys."""
+    script_dir = Path(__file__).resolve().parent
+    repo_root = script_dir.parent.parent
+    for candidate in (
+        repo_root / ".env",
+        repo_root / ".env.local",
+        script_dir / ".env",
+    ):
+        if candidate.is_file():
+            load_dotenv(candidate, override=False)
+
+
+def _context_from_scraped_rows(rows: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for row in rows:
+        url = str(row.get("url") or "").strip()
+        title = str(row.get("title") or url or "Source").strip()
+        content = str(row.get("raw_content") or "").strip()
+        if not content:
+            continue
+        parts.append(f"Source: {url}\nTitle: {title}\nContent: {content}")
+    return "\n\n".join(parts)
+
+
+def _search_hit_score(query: str, row: dict[str, Any]) -> int:
+    terms = _query_terms(query)
+    if not terms:
+        return 1
+    title = str(row.get("title") or "").lower()
+    body = str(row.get("body") or "").lower()
+    href = str(row.get("href") or row.get("url") or row.get("link") or "").lower()
+    score = 0
+    for term in terms:
+        if term in title:
+            score += 6
+        if term in href:
+            score += 5
+        if term in body:
+            score += 2
+    return score
+
+
+def _collect_search_urls(query: str, query_domains: list[str] | None, *, max_results: int = 12) -> list[str]:
+    rows: list[dict[str, Any]] = []
+    try:
+        retriever_name = os.environ.get("RETRIEVER", "duckduckgo").strip().lower() or "duckduckgo"
+        if retriever_name == "tavily" and os.environ.get("TAVILY_API_KEY", "").strip():
+            from gpt_researcher.retrievers.tavily.tavily_search import TavilySearch
+
+            rows.extend(TavilySearch(query, query_domains=query_domains or None).search(max_results=max_results) or [])
+        else:
+            from gpt_researcher.retrievers.duckduckgo.duckduckgo import Duckduckgo
+
+            rows.extend(Duckduckgo(query, query_domains=query_domains or None).search(max_results=max_results) or [])
+    except Exception as exc:
+        print(
+            f"[TRASK_WARN] retriever search failed: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+    ranked = sorted(rows, key=lambda row: _search_hit_score(query, row), reverse=True)
+    urls: list[str] = []
+    for row in ranked:
+        if not isinstance(row, dict):
+            continue
+        href = str(row.get("href") or row.get("url") or row.get("link") or "").strip()
+        if href:
+            urls.append(href)
+
+    if len(urls) < 2:
+        try:
+            from gpt_researcher.retrievers.duckduckgo.duckduckgo import Duckduckgo
+
+            supplemental = Duckduckgo(query, query_domains=None).search(max_results=max_results) or []
+            for row in sorted(supplemental, key=lambda r: _search_hit_score(query, r), reverse=True):
+                if isinstance(row, dict):
+                    href = str(row.get("href") or row.get("url") or row.get("link") or "").strip()
+                    if href:
+                        urls.append(href)
+        except Exception:
+            pass
+
+    return urls
+
+
+def _run_retriever_only_fallback(
+    query: str,
+    query_domains: list[str],
+    source_urls: list[str],
+) -> dict[str, Any]:
+    """
+    DuckDuckGo/Tavily search + lightweight scrape when GPTResearcher cannot run
+    (missing/invalid LLM credentials). No LLM calls — grounded fast report only.
+    """
+    allowed_seed, _ = _partition_allowed_urls(source_urls)
+    visited: list[str] = list(allowed_seed)
+    visited.extend(_collect_search_urls(query, query_domains or None))
+
+    allowed_urls, _ = _partition_allowed_urls(visited)
+    terms = _query_terms(query)
+    if terms:
+        scored_allowed: list[tuple[int, str]] = []
+        for url in allowed_urls:
+            lowered = url.lower()
+            score = sum(4 if term in lowered else 0 for term in terms)
+            scored_allowed.append((score, url))
+        scored_allowed.sort(key=lambda item: item[0], reverse=True)
+        allowed_urls = [url for score, url in scored_allowed if score > 0] or [url for _, url in scored_allowed]
+    unique_urls: list[str] = []
+    seen: set[str] = set()
+    for url in allowed_urls:
+        if url in seen:
+            continue
+        seen.add(url)
+        unique_urls.append(url)
+        if len(unique_urls) >= 6:
+            break
+
+    context_text = ""
+    if unique_urls:
+        try:
+            from gpt_researcher.scraper.scraper import Scraper
+
+            user_agent = os.environ.get(
+                "USER_AGENT",
+                "Mozilla/5.0 (compatible; OpenKotor-Trask/1.0; +https://github.com/OpenKotOR/community-bots)",
+            )
+            scraper_backend = os.environ.get("SCRAPER", "bs").strip() or "bs"
+            scraped = Scraper(unique_urls, user_agent, scraper_backend).run()
+            context_text = _context_from_scraped_rows(scraped)
+        except Exception as exc:
+            print(
+                f"[TRASK_WARN] retriever-only scrape failed: {type(exc).__name__}: {exc}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    if context_text.strip():
+        return _build_fast_report_from_context(query, context_text, unique_urls)
+
+    return _build_report_from_urls(query, unique_urls)
+
+
 def _build_report_from_urls(query: str, urls: list[str]) -> dict[str, Any]:
     """When scraped context is empty but allowlisted URLs were visited, return candidate sources only."""
     unique: list[str] = []
@@ -648,6 +817,29 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
         _die('payload: "report_source" must be a string', 1)
     has_llm_credentials = _has_llm_credentials()
 
+    if not has_llm_credentials:
+        print(
+            "[TRASK_WARN] No LLM API keys detected; using retriever-only web research.",
+            file=sys.stderr,
+            flush=True,
+        )
+        report_meta = _run_retriever_only_fallback(query.strip(), query_domains, source_urls)
+        visited, rejected_visited = _partition_allowed_urls(
+            [*source_urls, *report_meta.get("cited_urls", [])],
+        )
+        return {
+            "report": report_meta["report"],
+            "research_information": {
+                "source_urls": report_meta["cited_urls"],
+                "cited_urls": report_meta["cited_urls"],
+                "retrieved_urls": report_meta["retrieved_urls"],
+                "visited_urls": visited,
+                "query_domains": query_domains,
+                "allowed_url_prefixes": allowed_url_prefixes,
+                "rejected_source_urls": [*rejected_source_urls, *rejected_visited],
+            },
+        }
+
     # Wrap the constructor AND the async calls in redirect_stdout so that
     # any debug loggers initialised during GPTResearcher.__init__ don't
     # corrupt the JSON-only stdout contract.
@@ -680,21 +872,32 @@ async def _run_standard(payload: dict[str, Any]) -> dict[str, Any]:
             )
         except Exception as exc:
             if has_llm_credentials:
-                raise
-            print(
-                f"[TRASK_WARN] conduct_research failed without LLM credentials; degrading safely: {type(exc).__name__}: {exc}",
-                file=sys.stderr,
-                flush=True,
+                print(
+                    f"[TRASK_WARN] conduct_research failed with LLM credentials; trying retriever-only fallback: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            else:
+                print(
+                    f"[TRASK_WARN] conduct_research failed without LLM credentials; trying retriever-only fallback: {type(exc).__name__}: {exc}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            partial_visited = list(getattr(researcher, "visited_urls", []) or [])
+            report_meta = _run_retriever_only_fallback(
+                query.strip(),
+                query_domains,
+                [*source_urls, *partial_visited],
             )
-            researcher.visited_urls = []
-            report_meta = _build_report_from_urls(query.strip(), source_urls)
             return {
                 "report": report_meta["report"],
                 "research_information": {
                     "source_urls": report_meta["cited_urls"],
                     "cited_urls": report_meta["cited_urls"],
                     "retrieved_urls": report_meta["retrieved_urls"],
-                    "visited_urls": [],
+                    "visited_urls": _partition_allowed_urls(
+                        [*partial_visited, *report_meta.get("cited_urls", [])],
+                    )[0],
                     "query_domains": query_domains,
                     "allowed_url_prefixes": allowed_url_prefixes,
                     "rejected_source_urls": rejected_source_urls,
@@ -839,6 +1042,7 @@ def _ensure_ai_researchwizard_importable() -> None:
 
 def main() -> None:
     t_boot = time.perf_counter()
+    _load_trask_dotenv()
     load_dotenv()
     print(f"[TRASK_TIMING] load_dotenv={time.perf_counter() - t_boot:.2f}s", file=sys.stderr, flush=True)
 
