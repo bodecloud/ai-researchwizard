@@ -1,9 +1,10 @@
-name: Deploy GitHub Pages Static Frontend
+name: Deploy Frontends
 
 on:
   push:
     branches:
       - master
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,12 +12,60 @@ permissions:
   id-token: write
 
 concurrency:
-  group: "github-pages"
+  group: frontend-deployments
   cancel-in-progress: true
 
+env:
+  NEXT_PUBLIC_GPTR_API_URL: ${{ vars.NEXT_PUBLIC_GPTR_API_URL || secrets.NEXT_PUBLIC_GPTR_API_URL }}
+  GPTR_API_URL: ${{ vars.GPTR_API_URL || secrets.GPTR_API_URL || vars.NEXT_PUBLIC_GPTR_API_URL || secrets.NEXT_PUBLIC_GPTR_API_URL }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+
 jobs:
-  build:
+  validate-frontends:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/nextjs/package-lock.json
+
+      - name: Build static frontend bundle
+        run: npm run prepare:github-pages
+
+      - name: Install Next.js frontend dependencies
+        working-directory: frontend/nextjs
+        run: npm ci --legacy-peer-deps
+
+      - name: Lint Next.js frontend
+        working-directory: frontend/nextjs
+        run: npm run lint
+
+      - name: Build Next.js frontend
+        working-directory: frontend/nextjs
+        run: npm run build
+
+      - name: Audit Next.js frontend dependencies
+        working-directory: frontend/nextjs
+        run: npm audit --audit-level=critical
+
+      - name: Report high-severity Next.js frontend dependency advisories
+        working-directory: frontend/nextjs
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  github-pages-static:
+    runs-on: ubuntu-latest
+    needs: validate-frontends
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -34,16 +83,127 @@ jobs:
         with:
           path: docs/github-pages-static
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    permissions:
-      pages: write
-      id-token: write
-    steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  vercel-nextjs:
+    runs-on: ubuntu-latest
+    needs: validate-frontends
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Skip when Vercel secrets are not configured
+        if: env.VERCEL_TOKEN == '' || env.VERCEL_ORG_ID == '' || env.VERCEL_PROJECT_ID == ''
+        run: echo "Skipping Vercel deploy because VERCEL_TOKEN, VERCEL_ORG_ID, or VERCEL_PROJECT_ID is not configured."
+
+      - name: Checkout repository
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Pull Vercel project settings
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        working-directory: frontend/nextjs
+        run: npx vercel@latest pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build Vercel artifact
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        working-directory: frontend/nextjs
+        run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel
+        if: env.VERCEL_TOKEN != '' && env.VERCEL_ORG_ID != '' && env.VERCEL_PROJECT_ID != ''
+        working-directory: frontend/nextjs
+        run: npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+  railway-fullstack:
+    runs-on: ubuntu-latest
+    needs: validate-frontends
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+      RAILWAY_SERVICE_ID: ${{ secrets.RAILWAY_SERVICE_ID }}
+    steps:
+      - name: Skip when Railway secrets are not configured
+        if: env.RAILWAY_TOKEN == ''
+        run: echo "Skipping Railway deploy because RAILWAY_TOKEN is not configured."
+
+      - name: Checkout repository
+        if: env.RAILWAY_TOKEN != ''
+        uses: actions/checkout@v4
+
+      - name: Deploy fullstack image to Railway
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_SERVICE_ID == ''
+        run: npx @railway/cli@latest up --detach
+
+      - name: Deploy fullstack image to Railway service
+        if: env.RAILWAY_TOKEN != '' && env.RAILWAY_SERVICE_ID != ''
+        run: npx @railway/cli@latest up --service "$RAILWAY_SERVICE_ID" --detach
+
+  render-fullstack:
+    runs-on: ubuntu-latest
+    needs: validate-frontends
+    env:
+      RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+    steps:
+      - name: Skip when Render deploy hook is not configured
+        if: env.RENDER_DEPLOY_HOOK_URL == ''
+        run: echo "Skipping Render deploy because RENDER_DEPLOY_HOOK_URL is not configured."
+
+      - name: Trigger Render deploy hook
+        if: env.RENDER_DEPLOY_HOOK_URL != ''
+        run: curl --fail --show-error --silent --request POST "$RENDER_DEPLOY_HOOK_URL"
+
+  cloudflare-static:
+    runs-on: ubuntu-latest
+    needs: validate-frontends
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_PAGES_PROJECT: ${{ secrets.CLOUDFLARE_PAGES_PROJECT }}
+    steps:
+      - name: Skip when Cloudflare secrets are not configured
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == '' || env.CLOUDFLARE_PAGES_PROJECT == ''
+        run: echo "Skipping Cloudflare deploy because CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, or CLOUDFLARE_PAGES_PROJECT is not configured."
+
+      - name: Checkout repository
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_PAGES_PROJECT != ''
+        uses: actions/checkout@v4
+
+      - name: Build static frontend bundle
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_PAGES_PROJECT != ''
+        run: npm run prepare:github-pages
+
+      - name: Deploy to Cloudflare Pages
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != '' && env.CLOUDFLARE_PAGES_PROJECT != ''
+        run: npx wrangler@latest pages deploy docs/github-pages-static --project-name "$CLOUDFLARE_PAGES_PROJECT" --branch "$GITHUB_REF_NAME"
+
+  netlify-static:
+    runs-on: ubuntu-latest
+    needs: validate-frontends
+    env:
+      NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+      NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+    steps:
+      - name: Skip when Netlify secrets are not configured
+        if: env.NETLIFY_AUTH_TOKEN == '' || env.NETLIFY_SITE_ID == ''
+        run: echo "Skipping Netlify deploy because NETLIFY_AUTH_TOKEN or NETLIFY_SITE_ID is not configured."
+
+      - name: Checkout repository
+        if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        uses: actions/checkout@v4
+
+      - name: Build static frontend bundle
+        if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        run: npm run prepare:github-pages
+
+      - name: Deploy static frontend to Netlify
+        if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+        run: npx netlify-cli@latest deploy --prod --dir docs/github-pages-static

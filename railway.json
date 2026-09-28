@@ -7,8 +7,9 @@
   "deploy": {
     "runtime": "V2",
     "numReplicas": 1,
-    "startCommand": "python -m uvicorn backend.server.server:app --host=0.0.0.0 --port=8000",
+    "startCommand": "/usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf",
     "sleepApplication": true,
+    "healthcheckPath": "/",
     "multiRegionConfig": {
       "us-east4-eqdc4a": {
         "numReplicas": 1

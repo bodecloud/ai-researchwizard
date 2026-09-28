@@ -43,7 +43,7 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries \
   && chmod +x geckodriver \
   && mv geckodriver /usr/local/bin/ \
   && rm geckodriver-v0.36.0-${GECKO_ARCH}.tar.gz \
-  && rm -rf /var/lib/apt/lists/*https://github.com/bolabaden/ai-researchwizard/pull/6/files#:~:text=Dockerfile.fullstack
+  && rm -rf /var/lib/apt/lists/*
 
 ########################################################################
 # Stage 3: Python dependencies installation
@@ -82,6 +82,7 @@ RUN git clone https://github.com/assafelovic/gptr-mcp 2>/dev/null \
 FROM backend-builder AS final
 
 WORKDIR /usr/src/app
+EXPOSE 3000
 
 # Install Node.js and supervisord with retry logic
 RUN apt-get update && \

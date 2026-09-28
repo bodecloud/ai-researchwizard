@@ -12,7 +12,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&amp;display=swap" rel="stylesheet">
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="/frontend/styles.css">
+    <script src="./runtime-config.js"></script>
+    <link rel="stylesheet" href="./styles.css">
     <script data-cfasync="false">
         (function preventTailwindCdnInjection() {
             const removeTailwindCdnScripts = () => {
@@ -119,7 +120,7 @@
     </section>
 
     <main class="container" id="form">
-        <div class="agent-item"><img src="/static/new/wizard-logo.svg" class="avatar" alt="Research Wizard"></div>
+        <div class="agent-item"><img src="./static/new/wizard-logo.svg" class="avatar" alt="Research Wizard"></div>
         <form method="POST" class="mt-3" id="researchForm" onsubmit="event.preventDefault(); window.GPTResearcher?.startResearch?.(); return false;">
             <div class="form-group">
                 <label for="task" class="agent-question">What would you like me to research for you?</label>
@@ -343,7 +344,7 @@
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/showdown/1.9.1/showdown.min.js"></script>
-    <script src="/frontend/scripts.js"></script>
+    <script src="./scripts.js"></script>
     <script>
         // Auto-resize textarea as content grows
         const taskTextarea = document.getElementById('task');

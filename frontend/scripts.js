@@ -913,10 +913,36 @@ const GPTResearcher = (() => {
     };
   }
 
+  const getConfiguredApiUrl = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const configuredUrlCandidate =
+      urlParams.get("GPTR_API_URL") ||
+      localStorage.getItem("GPTR_API_URL") ||
+      window.__GPT_RESEARCHER_CONFIG__?.apiUrl;
+
+    if (!configuredUrlCandidate) {
+      return window.location.origin;
+    }
+
+    let configuredUrl;
+    try {
+      configuredUrl = new URL(configuredUrlCandidate, window.location.origin);
+    } catch (error) {
+      console.warn("Ignoring invalid GPTR_API_URL value", error);
+      return window.location.origin;
+    }
+
+    if (!["http:", "https:"].includes(configuredUrl.protocol)) {
+      console.warn(`Ignoring unsupported GPTR_API_URL protocol: ${configuredUrl.protocol}`);
+      return window.location.origin;
+    }
+
+    return configuredUrl.toString().replace(/\/+$/, "");
+  };
+
   const listenToSockEvents = () => {
-    const { protocol, host, pathname } = window.location
-    const ws_uri = `${protocol === 'https:' ? 'wss:' : 'ws:'
-      }//${host}${pathname}ws`
+    const apiUrl = getConfiguredApiUrl();
+    const ws_uri = `${apiUrl.replace(/^http:/, "ws:").replace(/^https:/, "wss:")}/ws`;
 
     // Set a timeout for connection - if it takes too long, stop the spinner
     connectionTimeout = setTimeout(() => {

@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: ai-researchwizard
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.fullstack
+    healthCheckPath: /
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: NEXT_PUBLIC_GPTR_API_URL
+        sync: false
+      - key: GPTR_API_URL
+        sync: false
